@@ -1,11 +1,26 @@
 import { z } from 'zod';
 
+export const bailianDefaults = {
+  baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  models: {
+    light: 'qwen3.8-flash',
+    standard: 'qwen3.7-plus',
+    strong: 'qwen3.8-max',
+  },
+} as const;
+
+const modelSetting = (fallback: string) => z.preprocess(
+  value => typeof value === 'string' && value.trim() === '' ? undefined : value,
+  z.string().trim().min(1).default(fallback),
+);
+
 const envSchema = z.object({
-  LLM_BASE_URL: z.url().default('https://api.openai.com/v1'),
-  LLM_API_KEY: z.string().optional().default(''),
-  LLM_MODEL_LIGHT: z.string().optional().default(''),
-  LLM_MODEL_STANDARD: z.string().optional().default(''),
-  LLM_MODEL_STRONG: z.string().optional().default(''),
+  LLM_BASE_URL: z.url().default(bailianDefaults.baseUrl),
+  LLM_API_KEY: z.string().trim().optional().default(''),
+  DASHSCOPE_API_KEY: z.string().trim().optional().default(''),
+  LLM_MODEL_LIGHT: modelSetting(bailianDefaults.models.light),
+  LLM_MODEL_STANDARD: modelSetting(bailianDefaults.models.standard),
+  LLM_MODEL_STRONG: modelSetting(bailianDefaults.models.strong),
 });
 
 const completionResponseSchema = z.object({
@@ -24,10 +39,11 @@ export type LlmConfig = {
 
 export function getLlmConfig(env: Partial<NodeJS.ProcessEnv> = process.env): LlmConfig {
   const parsed = envSchema.parse(env);
+  const apiKey = parsed.LLM_API_KEY || parsed.DASHSCOPE_API_KEY;
   return {
-    mode: parsed.LLM_API_KEY ? 'live' : 'mock',
+    mode: apiKey ? 'live' : 'mock',
     baseUrl: parsed.LLM_BASE_URL.replace(/\/$/, ''),
-    apiKey: parsed.LLM_API_KEY,
+    apiKey,
     models: {
       light: parsed.LLM_MODEL_LIGHT,
       standard: parsed.LLM_MODEL_STANDARD,

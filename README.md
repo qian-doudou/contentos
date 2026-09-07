@@ -14,7 +14,19 @@ npm run db:seed
 npm run dev
 ```
 
-打开 `http://localhost:3000`。未配置 `LLM_API_KEY` 时，LLM 客户端自动使用确定性 Mock 响应，核心演示路径无需外部服务。
+打开 `http://localhost:3000`。统一 LLM Client 默认通过阿里云百炼的 OpenAI 兼容接口调用千问；未配置 API Key 时自动使用确定性 Mock 响应，核心演示路径无需外部服务。
+
+## 百炼千问配置
+
+`.env.example` 已默认配置华北 2（北京）的百炼共享兼容端点，并使用以下模型分层：
+
+- Light：`qwen3.8-flash`
+- Standard：`qwen3.7-plus`
+- Strong：`qwen3.8-max`
+
+在 `.env.local` 中填写 `LLM_API_KEY` 即可进入 Live 模式；也兼容百炼官方环境变量名 `DASHSCOPE_API_KEY`，其中 `LLM_API_KEY` 优先。生产环境建议把 `LLM_BASE_URL` 替换为 `https://<WorkspaceId>.cn-beijing.maas.aliyuncs.com/compatible-mode/v1`。Base URL 与 API Key 必须属于同一地域，Key 不得写入源码或提交到 Git。
+
+百炼官方参考：[Base URL 总览](https://help.aliyun.com/zh/model-studio/base-url)、[OpenAI 兼容 Chat](https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-chat-completions)、[文本模型选择](https://help.aliyun.com/zh/model-studio/text-generation-model/)。
 
 本地 MVP 的组织与操作人由服务端环境变量 `LOCAL_ORGANIZATION_ID`、`LOCAL_USER_ID` 固定，HTTP 请求不能通过 header、query 或 body 切换组织。第三阶段接入真实权限模型前，不应将当前本地身份方案用于公网多租户环境。
 
