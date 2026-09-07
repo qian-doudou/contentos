@@ -1,6 +1,6 @@
 # ContentOS
 
-ContentOS 是面向本地生活短视频代运营团队的 AI 内容运营与项目管理平台。当前已完成第三阶段团队与权限：在可持久化的 Organization → Client → Brand → Store → Account 业务层级上，加入统一服务端权限边界、`client_members` 客户授权关系和仅开发环境可用的用户切换器。
+ContentOS 是面向本地生活短视频代运营团队的 AI 内容运营与项目管理平台。当前已完成第四阶段内容模型：在可持久化的 Organization → Client → Brand → Store → Account 业务层级上，加入月度内容计划、结构化内容主表、统一服务端权限边界和按账号计算的目标/实际统计。脚本正文不写入 `contents`，留给后续版本表承载。
 
 ## 本地运行
 
@@ -34,7 +34,7 @@ npm run dev
 
 - `owner`：当前阶段全部权限，包含演示数据恢复。
 - `admin`：组织与业务主数据管理，不包含危险系统操作。
-- `operator`：只读取 `client_members` 已分配客户的当前主数据；内容、计划等写入权限随对应业务阶段实现。
+- `operator`：只读取 `client_members` 已分配客户的主数据，并可管理这些客户的月度计划与内容；不能修改客户主资料。
 - `photographer` / `editor`：当前主数据 API 不授权；本人任务权限随拍摄、剪辑阶段实现。
 - `viewer`：只读取 `client_members` 已授权客户，所有主数据写入均返回 403。
 
@@ -47,6 +47,8 @@ npm run dev
 - `/clients/[id]`：客户资料及其品牌、门店、账号层级。
 - `/accounts`：按客户 → 品牌 → 门店 → 账号分组管理。
 - `/accounts/[id]`：账号定位、目标、内容风格、禁用风格及明确标记为未实现的内容统计。
+- `/contents/plans`、`/contents/plans/new`、`/contents/plans/[id]`：月度计划查询、创建、编辑和类型目标/实际统计。
+- `/contents`、`/contents/new`、`/contents/[id]`：结构化内容查询、创建、编辑和详情。
 - `/team`：成员、角色、负责客户数与状态（Owner / Admin 可访问）。
 - 其他导航入口保留后续阶段空状态，不会返回 404。
 
@@ -55,7 +57,7 @@ npm run dev
 - 默认数据库：`./data/contentos.db`，可通过 `DATABASE_PATH` 修改。
 - Schema：`db/schema.ts`。
 - Migration：`drizzle/`。
-- Seed：`npm run db:seed`，幂等写入带 `is_demo` 标识的组织、5 位可切换成员、客户授权关系和德祥楼业务层级。
+- Seed：`npm run db:seed`，幂等写入带 `is_demo` 标识的组织、5 位可切换成员、客户授权关系、德祥楼业务层级、2026 年 9 月计划和 1 条结构化内容。
 - 恢复演示数据：`npm run db:reset`，或在开发环境调用 `POST /api/dev/reset` 并传入 `{ "confirm": "RESET_DEMO" }`。该操作只恢复固定 demo ID，不物理删除客户、品牌、门店或账号。
 
 所有时间以 ISO 8601 文本保存，所有业务 ID 使用 UUID。核心层级通过包含 `organization_id` 的复合外键约束，服务层所有 ID 查询同时带组织条件。数据库文件被 Git 忽略，进程重启和页面刷新不会清空数据。
@@ -79,6 +81,15 @@ npm run dev
 - `GET/POST /api/accounts`
 - `GET/PUT /api/accounts/[id]`
 
+内容模型接口：
+
+- `GET/POST /api/content-plans`
+- `GET/PUT /api/content-plans/[id]`
+- `GET/POST /api/contents`
+- `GET/PUT /api/contents/[id]`
+
+`GET /api/content-plans` 支持 `accountId`、`year`、`month`、`status`、`page`、`pageSize`。`GET /api/contents` 支持关键字、客户/品牌/门店/账号/计划、内容类型、目标、优先级、运营人、状态、计划发布日期和分页。
+
 `GET /api/clients` 支持 `search`、`industry`、`ownerUserId`、`cooperationStatus`、`status`、`page`、`pageSize`。核心业务对象不提供物理删除 API，停用请更新为 `status=inactive`。
 
 所有接口统一返回：
@@ -101,6 +112,8 @@ npm run dev
 - Client / Brand：德祥楼，餐饮 / 铜锅涮羊肉，城市菏泽
 - Store：德祥楼（演示门店）
 - Account：德祥楼老板IP，目标为本地曝光、老板人设、团购转化
+- Monthly Plan：2026 年 9 月，计划 8 条，人设/产品/本地/转化各 25%
+- Content：《老板带你认识鲁西南铜锅涮》，结构化字段齐全，未写入脚本正文
 
 ## 质量检查
 
@@ -113,4 +126,4 @@ npm run build
 
 ## 当前边界
 
-当前未接入真实 OAuth、抖音 API、自动发布、GMV、支付、视频生成、自动剪辑、数字人或企业生产数据。账号内容统计明确返回 0 与 `implemented=false`，不代表后续业务能力已经完成。
+当前未接入真实 OAuth、抖音 API、脚本版本/审核流程、自动发布、GMV、支付、视频生成、自动剪辑、数字人或企业生产数据。第四阶段没有调用 AI，`current_*_version_id`、`active_approved_*_version_id` 和 `ai_review_status` 仅保留可空指针；账号页旧的内容统计占位仍明确返回 0 与 `implemented=false`。

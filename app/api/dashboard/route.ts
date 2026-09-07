@@ -45,7 +45,7 @@ export async function GET(request: Request) {
       },
       users: userRows,
       recentRuns: runRows.map((run) => ({ ...run, steps: steps.filter((step) => step.runId === run.id) })),
-      system: { database: 'connected', llmMode: getLlmConfig().mode, phase: 3 },
+      system: { database: 'connected', llmMode: getLlmConfig().mode, phase: 4 },
       permissions: {
         canResetDemo: permissions.has('system.dangerous'),
         canReadTeam: permissions.has('team.read'),

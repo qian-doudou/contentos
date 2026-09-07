@@ -1,7 +1,10 @@
 import { and, eq } from 'drizzle-orm';
 import { db, sqlite } from './client';
-import { accounts, appSettings, auditLogs, brands, clientMembers, clients, organizations, stores, users } from './schema';
+import {
+  accounts, appSettings, auditLogs, brands, clientMembers, clients, contents, monthlyPlans, organizations, stores, users,
+} from './schema';
 import { accountSchema, brandSchema, clientSchema, storeSchema, accountDefaults, brandDefaults, clientDefaults, storeDefaults } from '../lib/master-data/contracts';
+import { contentSchema, monthlyPlanSchema } from '../lib/content/contracts';
 
 export const DEMO_IDS = {
   organization: '0198f744-8e18-7ae2-a780-52a0e20c1931',
@@ -17,6 +20,8 @@ export const DEMO_IDS = {
   account: '0198f744-8e18-7ae2-a780-52a0e20c1944',
   operatorMembership: '0198f744-8e18-7ae2-a780-52a0e20c1951',
   viewerMembership: '0198f744-8e18-7ae2-a780-52a0e20c1952',
+  monthlyPlan: '0198f744-8e18-7ae2-a780-52a0e20c1961',
+  content: '0198f744-8e18-7ae2-a780-52a0e20c1962',
 } as const;
 
 const demoUsers = [
@@ -77,7 +82,7 @@ export function seedDemoData(options: { reset?: boolean } = {}) {
         id: DEMO_IDS.phaseSetting,
         organizationId: DEMO_IDS.organization,
         key: 'product.phase',
-        valueJson: JSON.stringify({ phase: 3, label: '团队与权限' }),
+        valueJson: JSON.stringify({ phase: 4, label: '内容模型' }),
         isSecret: false,
         isDemo: true,
         createdAt: now,
@@ -85,7 +90,7 @@ export function seedDemoData(options: { reset?: boolean } = {}) {
       })
       .onConflictDoUpdate({
         target: [appSettings.organizationId, appSettings.key],
-        set: { valueJson: JSON.stringify({ phase: 3, label: '团队与权限' }), updatedAt: now },
+        set: { valueJson: JSON.stringify({ phase: 4, label: '内容模型' }), updatedAt: now },
       })
       .run();
 
@@ -143,6 +148,72 @@ export function seedDemoData(options: { reset?: boolean } = {}) {
         eq(clientMembers.isDemo, true),
       )).get();
       if (!demoMembership) throw new Error(`Demo membership ID ${membership.id} is already owned by another record`);
+    }
+
+    const plan = monthlyPlanSchema.parse({
+      id: DEMO_IDS.monthlyPlan,
+      organizationId: DEMO_IDS.organization,
+      accountId: DEMO_IDS.account,
+      year: 2026,
+      month: 9,
+      primaryGoal: 'exposure',
+      plannedContentCount: 8,
+      campaignNotes: '围绕菏泽本地食客做老板人设与门店真实感内容。',
+      keyProductsJson: ['手切羊肉', '铜锅涮'],
+      contentMixJson: { persona: 25, product: 25, local: 25, conversion: 25 },
+      status: 'active',
+      createdBy: DEMO_IDS.owner,
+      isDemo: true,
+      createdAt: now,
+      updatedAt: now,
+    });
+    const content = contentSchema.parse({
+      id: DEMO_IDS.content,
+      organizationId: DEMO_IDS.organization,
+      clientId: DEMO_IDS.client,
+      brandId: DEMO_IDS.brand,
+      storeId: DEMO_IDS.store,
+      accountId: DEMO_IDS.account,
+      monthlyPlanId: DEMO_IDS.monthlyPlan,
+      title: '老板带你认识鲁西南铜锅涮',
+      contentType: 'persona',
+      contentGoal: 'exposure',
+      topic: '为什么菏泽人爱吃铜锅涮',
+      angle: '从老板的日常视角介绍本地饮食习惯',
+      hookType: 'local',
+      hookText: '菏泽人吃铜锅，先看的不是锅。',
+      coreMessage: '本地羊肉现切，用传统铜锅涮出真实风味。',
+      productText: '手切羊肉、铜锅涮',
+      ctaType: '到店团购',
+      localElement: '菏泽本地口音与鲁西南饮食习惯',
+      peopleJson: ['老板'],
+      status: 'active',
+      priority: 'high',
+      operatorId: DEMO_IDS.operator,
+      plannedPublishDate: '2026-09-15T00:00:00.000Z',
+      deadline: '2026-09-12T00:00:00.000Z',
+      currentScriptVersionId: null,
+      activeApprovedScriptVersionId: null,
+      currentEditVersionId: null,
+      activeApprovedEditVersionId: null,
+      aiReviewStatus: null,
+      createdBy: DEMO_IDS.owner,
+      isDemo: true,
+      createdAt: now,
+      updatedAt: now,
+    });
+    if (options.reset) {
+      db.insert(monthlyPlans).values(plan).onConflictDoUpdate({
+        target: monthlyPlans.id, set: plan,
+        setWhere: and(eq(monthlyPlans.organizationId, plan.organizationId), eq(monthlyPlans.isDemo, true)),
+      }).run();
+      db.insert(contents).values(content).onConflictDoUpdate({
+        target: contents.id, set: content,
+        setWhere: and(eq(contents.organizationId, content.organizationId), eq(contents.isDemo, true)),
+      }).run();
+    } else {
+      db.insert(monthlyPlans).values(plan).onConflictDoNothing().run();
+      db.insert(contents).values(content).onConflictDoNothing().run();
     }
 
     if (options.reset) {

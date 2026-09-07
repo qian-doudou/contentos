@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { clientMemberSchema, organizationSchema, runSchema, runStepSchema, userSchema } from '@/db/validation';
 import { devResetInputSchema } from '@/lib/contracts';
 import { accountSchema, clientSchema } from '@/lib/master-data/contracts';
+import { createContentSchema, createMonthlyPlanSchema } from '@/lib/content/contracts';
 
 const base = {
   id: '0198f744-8e18-7ae2-a780-52a0e20c1931',
@@ -63,5 +64,34 @@ describe('business schemas', () => {
       ...base, clientId: base.id, userId: base.id, roleOverride: 'viewer',
     }).roleOverride).toBe('viewer');
     expect(() => clientMemberSchema.parse({ ...base, clientId: base.id, userId: base.id, roleOverride: 'root' })).toThrow();
+  });
+
+  it('validates phase-four mix totals, empty plans and stable content enums', () => {
+    expect(createMonthlyPlanSchema.parse({
+      accountId: base.id, year: 2026, month: 9, primaryGoal: 'exposure', plannedContentCount: 0,
+    }).contentMixJson).toEqual({});
+    expect(createMonthlyPlanSchema.parse({
+      accountId: base.id, year: 2026, month: 9, primaryGoal: 'exposure', plannedContentCount: 0,
+      contentMixJson: { persona: 50, product: 50 },
+    }).contentMixJson).toEqual({ persona: 50, product: 50 });
+    expect(() => createMonthlyPlanSchema.parse({
+      accountId: base.id, year: 2026, month: 9, primaryGoal: 'exposure', plannedContentCount: 8,
+      contentMixJson: { persona: 60, product: 30 },
+    })).toThrow();
+    expect(() => createMonthlyPlanSchema.parse({
+      accountId: base.id, year: 2026, month: 9, primaryGoal: 'exposure', plannedContentCount: -1,
+      contentMixJson: {},
+    })).toThrow();
+
+    const valid = {
+      accountId: base.id, title: '老板 IP', contentType: 'persona', contentGoal: 'exposure', operatorId: base.id,
+      hookType: 'local', priority: 'high', peopleJson: ['老板'],
+    };
+    expect(createContentSchema.parse(valid)).toMatchObject({ contentType: 'persona', hookType: 'local', priority: 'high' });
+    expect(() => createContentSchema.parse({ ...valid, contentType: 'advertorial' })).toThrow();
+    expect(() => createContentSchema.parse({ ...valid, contentGoal: 'sales' })).toThrow();
+    expect(() => createContentSchema.parse({ ...valid, hookType: 'viral' })).toThrow();
+    expect(() => createContentSchema.parse({ ...valid, priority: 'critical' })).toThrow();
+    expect(() => createContentSchema.parse({ ...valid, script: '不允许写入主表' })).toThrow();
   });
 });

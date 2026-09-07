@@ -29,6 +29,13 @@
       "when": 1788766291441,
       "tag": "0003_wise_sheva_callister",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1788768932750,
+      "tag": "0004_omniscient_goblin_queen",
+      "breakpoints": true
     }
   ]
 }

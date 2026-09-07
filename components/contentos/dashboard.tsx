@@ -164,7 +164,7 @@ export function Dashboard() {
   return (
     <div className="space-y-6">
       <section className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div><p className="eyebrow">工作台 / 系统总览</p><h1 className="page-title">内容运营控制台</h1><p className="page-description">{data.organization?.name ?? '尚未创建组织'} · 第三阶段团队与权限</p></div>
+        <div><p className="eyebrow">工作台 / 系统总览</p><h1 className="page-title">内容运营控制台</h1><p className="page-description">{data.organization?.name ?? '尚未创建组织'} · 第四阶段内容模型</p></div>
         <div className="flex flex-wrap items-center gap-2">
           <Badge className="h-7 bg-emerald-100 px-3 text-emerald-700"><CheckCircle2 />SQLite 已连接</Badge>
           <Badge className="h-7 bg-cyan-100 px-3 text-cyan-800"><Bot />千问 {data.system.llmMode === 'mock' ? 'Mock' : 'Live'}</Badge>

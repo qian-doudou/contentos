@@ -15,6 +15,7 @@ const organizationRoleMatrix: Record<OrganizationPermission, readonly User['role
   'system.dangerous': ['owner'],
 };
 const masterDataReaderRoles = new Set<User['role']>(['owner', 'admin', 'operator', 'viewer']);
+const contentWriterRoles = new Set<User['role']>(['owner', 'admin', 'operator']);
 
 const forbidden = (message = '当前身份无权执行此操作') =>
   new ApiError(403, 'PERMISSION_DENIED', message);
@@ -44,10 +45,11 @@ export function permissionService(db: Database, organizationId: string, userId: 
   const requirePermission = (permission: OrganizationPermission) => {
     if (!has(permission)) throw forbidden();
   };
-  const memberships = () => db.select().from(tables.clientMembers).where(and(
+  const membershipsFor = (memberId: string) => db.select().from(tables.clientMembers).where(and(
     eq(tables.clientMembers.organizationId, validOrganizationId),
-    eq(tables.clientMembers.userId, validUserId),
+    eq(tables.clientMembers.userId, memberId),
   )).all();
+  const memberships = () => membershipsFor(validUserId);
   const isGlobalMasterDataReader = actor.role === 'owner' || actor.role === 'admin';
 
   const readableClientIds = (): string[] | null => {
@@ -65,6 +67,27 @@ export function permissionService(db: Database, organizationId: string, userId: 
     if (!membership || !masterDataReaderRoles.has(membership.roleOverride ?? actor.role))
       throw forbidden('当前身份未被授权访问该客户');
   };
+  const canUserWriteClient = (memberId: string, clientId: string) => {
+    const validMemberId = z.uuid().parse(memberId);
+    const validClientId = z.uuid().parse(clientId);
+    const member = db.select().from(tables.users).where(and(
+      eq(tables.users.organizationId, validOrganizationId),
+      eq(tables.users.id, validMemberId),
+      eq(tables.users.status, 'active'),
+    )).get();
+    if (!member) return false;
+    if (member.role === 'owner' || member.role === 'admin') return true;
+    const membership = membershipsFor(validMemberId).find(row => row.clientId === validClientId);
+    return !!membership && contentWriterRoles.has(membership.roleOverride ?? member.role);
+  };
+  const canWriteClient = (clientId: string) => canUserWriteClient(validUserId, clientId);
+  const requireClientWrite = (clientId: string) => {
+    if (!canWriteClient(clientId)) throw forbidden('当前身份无权管理该客户的内容与计划');
+  };
+  const writableClientIds = (): string[] | null => {
+    if (actor.role === 'owner' || actor.role === 'admin') return null;
+    return [...new Set(memberships().filter(row => contentWriterRoles.has(row.roleOverride ?? actor.role)).map(row => row.clientId))];
+  };
 
   return {
     organization,
@@ -74,5 +97,9 @@ export function permissionService(db: Database, organizationId: string, userId: 
     get canWriteMasterData() { return has('master_data.write'); },
     readableClientIds,
     requireClientRead,
+    canUserWriteClient,
+    canWriteClient,
+    requireClientWrite,
+    writableClientIds,
   };
 }

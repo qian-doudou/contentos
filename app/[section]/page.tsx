@@ -16,7 +16,7 @@ const sections = {
 } satisfies Record<string, SectionConfig>;
 
 export function generateStaticParams() {
-  return Object.keys(sections).filter(section => !['clients', 'accounts', 'team'].includes(section)).map((section) => ({ section }));
+  return Object.keys(sections).filter(section => !['clients', 'accounts', 'contents', 'team'].includes(section)).map((section) => ({ section }));
 }
 
 export default async function Page({ params }: { params: Promise<{ section: string }> }) {

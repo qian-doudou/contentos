@@ -1,6 +1,8 @@
 import { check, foreignKey, index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';
-import { accountTypes, businessStatuses, cooperationStatuses } from './constants';
+import {
+  accountTypes, businessStatuses, contentGoals, contentPriorities, contentTypes, cooperationStatuses, hookTypes,
+} from './constants';
 import {
   organizationStatuses,
   runStatuses,
@@ -238,6 +240,7 @@ export const accounts = sqliteTable('accounts', {
   followers: integer('followers'),
 }, (t) => [
   uniqueIndex('uq_accounts_org_id').on(t.organizationId, t.id),
+  uniqueIndex('uq_accounts_org_hierarchy_id').on(t.organizationId, t.clientId, t.brandId, t.storeId, t.id),
   index('idx_accounts_org_hierarchy').on(t.organizationId, t.clientId, t.brandId, t.storeId),
   foreignKey({ columns: [t.organizationId, t.clientId], foreignColumns: [clients.organizationId, clients.id] }),
   foreignKey({ columns: [t.organizationId, t.clientId, t.brandId], foreignColumns: [brands.organizationId, brands.clientId, brands.id] }),
@@ -249,8 +252,108 @@ export const accounts = sqliteTable('accounts', {
   check('accounts_json_arrays', sql`json_type(${t.accountGoalJson}) = 'array' AND json_type(${t.contentStyleJson}) = 'array' AND json_type(${t.forbiddenStyleJson}) = 'array'`),
 ]);
 
+export const monthlyPlans = sqliteTable('monthly_plans', {
+  id: text('id').primaryKey(),
+  organizationId: text('organization_id').notNull().references(() => organizations.id),
+  accountId: text('account_id').notNull(),
+  year: integer('year').notNull(),
+  month: integer('month').notNull(),
+  primaryGoal: text('primary_goal', { enum: contentGoals }).notNull(),
+  plannedContentCount: integer('planned_content_count').notNull().default(0),
+  campaignNotes: text('campaign_notes').notNull().default(''),
+  keyProductsJson: listColumn('key_products_json'),
+  contentMixJson: text('content_mix_json', { mode: 'json' }).$type<Partial<Record<(typeof contentTypes)[number], number>>>().notNull().default({}),
+  status: text('status', { enum: businessStatuses }).notNull().default('active'),
+  createdBy: text('created_by').notNull(),
+  isDemo: integer('is_demo', { mode: 'boolean' }).notNull().default(false),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+}, (t) => [
+  uniqueIndex('uq_monthly_plans_org_account_period').on(t.organizationId, t.accountId, t.year, t.month),
+  uniqueIndex('uq_monthly_plans_org_account_id').on(t.organizationId, t.accountId, t.id),
+  index('idx_monthly_plans_org_period').on(t.organizationId, t.year, t.month),
+  foreignKey({ columns: [t.organizationId, t.accountId], foreignColumns: [accounts.organizationId, accounts.id] }),
+  foreignKey({ columns: [t.organizationId, t.createdBy], foreignColumns: [users.organizationId, users.id] }),
+  check('monthly_plans_year_valid', sql`${t.year} BETWEEN 2000 AND 2100 AND typeof(${t.year}) = 'integer'`),
+  check('monthly_plans_month_valid', sql`${t.month} BETWEEN 1 AND 12 AND typeof(${t.month}) = 'integer'`),
+  check('monthly_plans_count_nonnegative', sql`${t.plannedContentCount} >= 0 AND typeof(${t.plannedContentCount}) = 'integer'`),
+  check('monthly_plans_status_valid', sql`${t.status} IN ('active', 'inactive')`),
+  check('monthly_plans_goal_valid', sql`${t.primaryGoal} IN ('exposure', 'followers', 'trust', 'click', 'conversion', 'gmv')`),
+  check('monthly_plans_products_array', sql`json_type(${t.keyProductsJson}) = 'array'`),
+  check('monthly_plans_mix_object', sql`json_type(${t.contentMixJson}) = 'object'`),
+  check('monthly_plans_mix_total', sql`(
+    ${t.plannedContentCount} = 0 AND ${t.contentMixJson} = '{}'
+  ) OR (
+    coalesce(json_extract(${t.contentMixJson}, '$.persona'), 0) +
+    coalesce(json_extract(${t.contentMixJson}, '$.product'), 0) +
+    coalesce(json_extract(${t.contentMixJson}, '$.local'), 0) +
+    coalesce(json_extract(${t.contentMixJson}, '$.trust'), 0) +
+    coalesce(json_extract(${t.contentMixJson}, '$.conversion'), 0) +
+    coalesce(json_extract(${t.contentMixJson}, '$.education'), 0) +
+    coalesce(json_extract(${t.contentMixJson}, '$.process'), 0) +
+    coalesce(json_extract(${t.contentMixJson}, '$.customer_case'), 0) +
+    coalesce(json_extract(${t.contentMixJson}, '$.other'), 0) = 100
+  )`),
+]);
+
+export const contents = sqliteTable('contents', {
+  id: text('id').primaryKey(),
+  organizationId: text('organization_id').notNull().references(() => organizations.id),
+  clientId: text('client_id').notNull(),
+  brandId: text('brand_id').notNull(),
+  storeId: text('store_id').notNull(),
+  accountId: text('account_id').notNull(),
+  monthlyPlanId: text('monthly_plan_id'),
+  title: text('title').notNull(),
+  contentType: text('content_type', { enum: contentTypes }).notNull(),
+  contentGoal: text('content_goal', { enum: contentGoals }).notNull(),
+  topic: text('topic').notNull().default(''),
+  angle: text('angle').notNull().default(''),
+  hookType: text('hook_type', { enum: hookTypes }).notNull().default('other'),
+  hookText: text('hook_text').notNull().default(''),
+  coreMessage: text('core_message').notNull().default(''),
+  productText: text('product_text').notNull().default(''),
+  ctaType: text('cta_type').notNull().default(''),
+  localElement: text('local_element').notNull().default(''),
+  peopleJson: listColumn('people_json'),
+  status: text('status', { enum: businessStatuses }).notNull().default('active'),
+  priority: text('priority', { enum: contentPriorities }).notNull().default('normal'),
+  operatorId: text('operator_id').notNull(),
+  plannedPublishDate: text('planned_publish_date'),
+  deadline: text('deadline'),
+  currentScriptVersionId: text('current_script_version_id'),
+  activeApprovedScriptVersionId: text('active_approved_script_version_id'),
+  currentEditVersionId: text('current_edit_version_id'),
+  activeApprovedEditVersionId: text('active_approved_edit_version_id'),
+  aiReviewStatus: text('ai_review_status'),
+  createdBy: text('created_by').notNull(),
+  isDemo: integer('is_demo', { mode: 'boolean' }).notNull().default(false),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+}, (t) => [
+  uniqueIndex('uq_contents_org_id').on(t.organizationId, t.id),
+  index('idx_contents_org_account_status').on(t.organizationId, t.accountId, t.status),
+  index('idx_contents_org_plan').on(t.organizationId, t.monthlyPlanId),
+  index('idx_contents_org_publish_date').on(t.organizationId, t.plannedPublishDate),
+  foreignKey({
+    columns: [t.organizationId, t.clientId, t.brandId, t.storeId, t.accountId],
+    foreignColumns: [accounts.organizationId, accounts.clientId, accounts.brandId, accounts.storeId, accounts.id],
+  }),
+  foreignKey({ columns: [t.organizationId, t.accountId, t.monthlyPlanId], foreignColumns: [monthlyPlans.organizationId, monthlyPlans.accountId, monthlyPlans.id] }),
+  foreignKey({ columns: [t.organizationId, t.operatorId], foreignColumns: [users.organizationId, users.id] }),
+  foreignKey({ columns: [t.organizationId, t.createdBy], foreignColumns: [users.organizationId, users.id] }),
+  check('contents_type_valid', sql`${t.contentType} IN ('persona', 'product', 'local', 'trust', 'conversion', 'education', 'process', 'customer_case', 'other')`),
+  check('contents_goal_valid', sql`${t.contentGoal} IN ('exposure', 'followers', 'trust', 'click', 'conversion', 'gmv')`),
+  check('contents_hook_valid', sql`${t.hookType} IN ('contrast', 'conflict', 'price', 'question', 'identity', 'local', 'result', 'mistake', 'secret', 'challenge', 'other')`),
+  check('contents_priority_valid', sql`${t.priority} IN ('low', 'normal', 'high', 'urgent')`),
+  check('contents_status_valid', sql`${t.status} IN ('active', 'inactive')`),
+  check('contents_people_array', sql`json_type(${t.peopleJson}) = 'array'`),
+]);
+
 export type ClientRow = typeof clients.$inferSelect;
 export type ClientMemberRow = typeof clientMembers.$inferSelect;
 export type BrandRow = typeof brands.$inferSelect;
 export type StoreRow = typeof stores.$inferSelect;
 export type AccountRow = typeof accounts.$inferSelect;
+export type MonthlyPlanRow = typeof monthlyPlans.$inferSelect;
+export type ContentRow = typeof contents.$inferSelect;

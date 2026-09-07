@@ -7,3 +7,7 @@ export const runStepStatuses = ['pending', 'running', 'succeeded', 'failed', 'sk
 export const cooperationStatuses = ['lead', 'active', 'paused', 'ended'] as const;
 export const accountTypes = ['official', 'owner_ip', 'employee_ip', 'store', 'other'] as const;
 export const businessStatuses = ['active', 'inactive'] as const;
+export const contentTypes = ['persona', 'product', 'local', 'trust', 'conversion', 'education', 'process', 'customer_case', 'other'] as const;
+export const contentGoals = ['exposure', 'followers', 'trust', 'click', 'conversion', 'gmv'] as const;
+export const hookTypes = ['contrast', 'conflict', 'price', 'question', 'identity', 'local', 'result', 'mistake', 'secret', 'challenge', 'other'] as const;
+export const contentPriorities = ['low', 'normal', 'high', 'urgent'] as const;
