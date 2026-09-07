@@ -18,7 +18,7 @@ describe('SQLite migration', () => {
     expect(sqlite.prepare("select count(*) as value from sqlite_schema where type = 'table' and name = 'skills'").get()).toEqual({ value: 1 });
   });
 
-  it('creates every phase-six table with organization scope', () => {
+  it('creates every phase-seven table with organization scope', () => {
     sqlite = new Database(':memory:');
     sqlite.pragma('foreign_keys = ON');
     const migrations = readdirSync(resolve('drizzle'))
@@ -31,13 +31,13 @@ describe('SQLite migration', () => {
     const tables = sqlite.prepare("select name from sqlite_schema where type = 'table' order by name").all() as Array<{ name: string }>;
     expect(tables.map((row) => row.name)).toEqual([
       'accounts', 'ai_point_ledger', 'ai_usage_logs', 'app_settings', 'audit_logs', 'brands', 'client_members', 'clients',
-      'content_status_logs', 'contents', 'model_price_configs', 'monthly_plans', 'organization_ai_quotas', 'organizations',
+      'content_status_logs', 'contents', 'context_snapshots', 'memories', 'model_price_configs', 'monthly_plans', 'organization_ai_quotas', 'organizations',
       'run_steps', 'runs', 'skill_versions', 'skills', 'stores', 'users',
     ]);
 
     for (const table of [
       'accounts', 'ai_point_ledger', 'ai_usage_logs', 'app_settings', 'audit_logs', 'brands', 'client_members', 'clients',
-      'content_status_logs', 'contents', 'monthly_plans', 'organization_ai_quotas', 'run_steps', 'runs', 'skill_versions',
+      'content_status_logs', 'contents', 'context_snapshots', 'memories', 'monthly_plans', 'organization_ai_quotas', 'run_steps', 'runs', 'skill_versions',
       'skills', 'stores', 'users',
     ]) {
       const columns = sqlite.prepare(`pragma table_info(${table})`).all() as Array<{ name: string }>;
@@ -56,6 +56,10 @@ describe('SQLite migration', () => {
     expect(new Set(statusLogForeignKeys.map(key => key.id)).size).toBe(3);
     const usageForeignKeys = sqlite.prepare('pragma foreign_key_list(ai_usage_logs)').all() as Array<{ id: number }>;
     expect(new Set(usageForeignKeys.map(key => key.id)).size).toBe(6);
+    const memoryForeignKeys = sqlite.prepare('pragma foreign_key_list(memories)').all() as Array<{ id: number }>;
+    expect(new Set(memoryForeignKeys.map(key => key.id)).size).toBe(3);
+    const snapshotForeignKeys = sqlite.prepare('pragma foreign_key_list(context_snapshots)').all() as Array<{ id: number }>;
+    expect(new Set(snapshotForeignKeys.map(key => key.id)).size).toBe(5);
 
     const contentColumns = sqlite.prepare('pragma table_info(contents)').all() as Array<{ name: string }>;
     expect(contentColumns.some(column => column.name === 'script')).toBe(false);

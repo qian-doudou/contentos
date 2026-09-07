@@ -15,6 +15,9 @@ export type OrganizationPermission =
   | 'ai.test'
   | 'ai.settings'
   | 'runs.read'
+  | 'memory.read'
+  | 'memory.write'
+  | 'context.build'
   | 'system.dangerous';
 
 const organizationRoleMatrix: Record<OrganizationPermission, readonly User['role'][]> = {
@@ -25,6 +28,9 @@ const organizationRoleMatrix: Record<OrganizationPermission, readonly User['role
   'ai.test': ['owner', 'admin', 'operator'],
   'ai.settings': ['owner', 'admin'],
   'runs.read': ['owner', 'admin'],
+  'memory.read': ['owner', 'admin', 'operator', 'viewer'],
+  'memory.write': ['owner', 'admin', 'operator'],
+  'context.build': ['owner', 'admin', 'operator'],
   'system.dangerous': ['owner'],
 };
 const masterDataReaderRoles = new Set<User['role']>(['owner', 'admin', 'operator', 'viewer']);

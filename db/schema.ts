@@ -3,7 +3,7 @@ import { sql } from 'drizzle-orm';
 import {
   accountTypes, aiLedgerTypes, aiUsageStatuses, businessStatuses, contentGoals, contentPriorities,
   contentStatuses, contentStatusTriggers, contentTypes, cooperationStatuses, hookTypes, modelProfiles,
-  priceConfigStatuses,
+  memoryScopeTypes, memorySourceTypes, memoryStatuses, memoryTypes, priceConfigStatuses,
 } from './constants';
 import {
   organizationStatuses,
@@ -383,6 +383,71 @@ export type AccountRow = typeof accounts.$inferSelect;
 export type MonthlyPlanRow = typeof monthlyPlans.$inferSelect;
 export type ContentRow = typeof contents.$inferSelect;
 export type ContentStatusLogRow = typeof contentStatusLogs.$inferSelect;
+
+export const memories = sqliteTable('memories', {
+  id: text('id').primaryKey(),
+  organizationId: text('organization_id').notNull().references(() => organizations.id),
+  scopeType: text('scope_type', { enum: memoryScopeTypes }).notNull(),
+  scopeId: text('scope_id').notNull(),
+  memoryKey: text('memory_key').notNull(),
+  memoryType: text('memory_type', { enum: memoryTypes }).notNull(),
+  valueJson: text('value_json', { mode: 'json' }).$type<unknown>().notNull(),
+  summary: text('summary').notNull(),
+  importance: integer('importance').notNull(),
+  confidence: real('confidence').notNull(),
+  sourceType: text('source_type', { enum: memorySourceTypes }).notNull(),
+  sourceId: text('source_id'),
+  effectiveAt: text('effective_at').notNull(),
+  expiresAt: text('expires_at'),
+  status: text('status', { enum: memoryStatuses }).notNull().default('active'),
+  supersedesMemoryId: text('supersedes_memory_id'),
+  createdBy: text('created_by').notNull(),
+  isDemo: integer('is_demo', { mode: 'boolean' }).notNull().default(false),
+  createdAt: text('created_at').notNull(),
+}, (t) => [
+  uniqueIndex('uq_memories_org_id').on(t.organizationId, t.id),
+  uniqueIndex('uq_memories_active_key').on(t.organizationId, t.scopeType, t.scopeId, t.memoryKey)
+    .where(sql`${t.status} = 'active'`),
+  index('idx_memories_context_lookup').on(t.organizationId, t.scopeType, t.scopeId, t.status, t.effectiveAt),
+  index('idx_memories_expiration').on(t.organizationId, t.status, t.expiresAt),
+  foreignKey({ columns: [t.organizationId, t.createdBy], foreignColumns: [users.organizationId, users.id] }),
+  foreignKey({
+    columns: [t.organizationId, t.supersedesMemoryId],
+    foreignColumns: [t.organizationId, t.id],
+  }),
+  check('memories_scope_type_valid', sql`${t.scopeType} IN ('brand', 'account')`),
+  check('memories_type_valid', sql`${t.memoryType} IN ('brand', 'preference', 'content_pattern', 'performance_pattern', 'strategy', 'temporary')`),
+  check('memories_status_valid', sql`${t.status} IN ('active', 'inactive', 'superseded', 'expired')`),
+  check('memories_source_type_valid', sql`${t.sourceType} IN ('brand_profile', 'confirmed_preference', 'confirmed_performance', 'confirmed_strategy', 'manual')`),
+  check('memories_importance_valid', sql`${t.importance} BETWEEN 1 AND 5 AND typeof(${t.importance}) = 'integer'`),
+  check('memories_confidence_valid', sql`${t.confidence} BETWEEN 0 AND 1`),
+  check('memories_expiration_order', sql`${t.expiresAt} IS NULL OR ${t.effectiveAt} < ${t.expiresAt}`),
+]);
+
+export const contextSnapshots = sqliteTable('context_snapshots', {
+  id: text('id').primaryKey(),
+  organizationId: text('organization_id').notNull().references(() => organizations.id),
+  accountId: text('account_id').notNull(),
+  contentId: text('content_id'),
+  monthlyPlanId: text('monthly_plan_id'),
+  contextSnapshotJson: text('context_snapshot_json', { mode: 'json' }).$type<Record<string, unknown>>().notNull(),
+  createdBy: text('created_by').notNull(),
+  isDemo: integer('is_demo', { mode: 'boolean' }).notNull().default(false),
+  createdAt: text('created_at').notNull(),
+}, (t) => [
+  uniqueIndex('uq_context_snapshots_org_id').on(t.organizationId, t.id),
+  index('idx_context_snapshots_org_account_created').on(t.organizationId, t.accountId, t.createdAt),
+  foreignKey({ columns: [t.organizationId, t.accountId], foreignColumns: [accounts.organizationId, accounts.id] }),
+  foreignKey({ columns: [t.organizationId, t.contentId], foreignColumns: [contents.organizationId, contents.id] }),
+  foreignKey({
+    columns: [t.organizationId, t.accountId, t.monthlyPlanId],
+    foreignColumns: [monthlyPlans.organizationId, monthlyPlans.accountId, monthlyPlans.id],
+  }),
+  foreignKey({ columns: [t.organizationId, t.createdBy], foreignColumns: [users.organizationId, users.id] }),
+]);
+
+export type MemoryRow = typeof memories.$inferSelect;
+export type ContextSnapshotRow = typeof contextSnapshots.$inferSelect;
 
 export const skills = sqliteTable(
   'skills',

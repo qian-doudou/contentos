@@ -42,11 +42,12 @@ function EmptyKanban() {
 
 export function SectionPage({ config }: { config: SectionConfig }) {
   const isContents = config.slug === 'contents';
+  const isAi = config.slug === 'ai';
   return (
     <div className="space-y-6">
       <section className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div><p className="eyebrow">{config.eyebrow}</p><h1 className="page-title">{config.title}</h1><p className="page-description">{config.description}</p></div>
-        <Badge className="h-7 bg-amber-50 px-3 text-amber-700" variant="secondary">后续阶段实现</Badge>
+        <Badge className={`h-7 px-3 ${isAi ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`} variant="secondary">{isAi ? 'Memory 已可用' : '后续阶段实现'}</Badge>
       </section>
 
       {isContents ? <EmptyKanban /> : (
@@ -54,8 +55,8 @@ export function SectionPage({ config }: { config: SectionConfig }) {
           <CardHeader className="border-b"><div><p className="section-kicker">后续阶段</p><CardTitle className="mt-1 text-xl">{config.entity}</CardTitle><CardDescription className="mt-1">当前阶段仅保留统一入口、状态与数据边界。</CardDescription></div><Badge variant="outline">0 条记录</Badge></CardHeader>
           <CardContent className="flex min-h-80 items-center justify-center">
             <Empty className="max-w-xl border border-dashed border-slate-200 bg-slate-50/70">
-              <EmptyHeader><EmptyMedia variant="icon">{config.slug === 'ai' ? <Sparkles /> : <Layers3 />}</EmptyMedia><EmptyTitle>{config.entity}暂无数据</EmptyTitle><EmptyDescription>该模块不在第一阶段实现范围内。后续接入时将沿用 organization_id、多租户数据隔离与统一 Run 追踪。</EmptyDescription></EmptyHeader>
-              <Button variant="outline" nativeButton={false} render={<Link href="/" />}>返回工作台<ArrowRight data-icon="inline-end" /></Button>
+              <EmptyHeader><EmptyMedia variant="icon">{isAi ? <Sparkles /> : <Layers3 />}</EmptyMedia><EmptyTitle>{isAi ? '长期记忆与 Context Builder' : `${config.entity}暂无数据`}</EmptyTitle><EmptyDescription>{isAi ? '管理经确认的长期记忆，并以固定预算构建可追溯上下文快照。' : '该模块不在当前阶段实现范围内。后续接入时将沿用 organization_id、多租户数据隔离与统一 Run 追踪。'}</EmptyDescription></EmptyHeader>
+              <Button variant="outline" nativeButton={false} render={<Link href={isAi ? '/ai/memory' : '/'} />}>{isAi ? '打开 Memory 管理' : '返回工作台'}<ArrowRight data-icon="inline-end" /></Button>
             </Empty>
           </CardContent>
         </Card>

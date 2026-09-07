@@ -2,10 +2,11 @@ import { and, eq } from 'drizzle-orm';
 import { db, sqlite } from './client';
 import {
   accounts, appSettings, auditLogs, brands, clientMembers, clients, contents, monthlyPlans,
-  organizationAiQuotas, organizations, skillVersions, skills, stores, users,
+  memories, organizationAiQuotas, organizations, skillVersions, skills, stores, users,
 } from './schema';
 import { accountSchema, brandSchema, clientSchema, storeSchema, accountDefaults, brandDefaults, clientDefaults, storeDefaults } from '../lib/master-data/contracts';
 import { contentSchema, monthlyPlanSchema } from '../lib/content/contracts';
+import { memorySchema } from '../lib/memory/contracts';
 
 export const DEMO_IDS = {
   organization: '0198f744-8e18-7ae2-a780-52a0e20c1931',
@@ -24,6 +25,12 @@ export const DEMO_IDS = {
   monthlyPlan: '0198f744-8e18-7ae2-a780-52a0e20c1961',
   content: '0198f744-8e18-7ae2-a780-52a0e20c1962',
   aiQuota: '0198f744-8e18-7ae2-a780-52a0e20c1971',
+  brandPositioningMemory: '0198f744-8e18-7ae2-a780-52a0e20c1981',
+  brandProductsMemory: '0198f744-8e18-7ae2-a780-52a0e20c1982',
+  brandSellingPointsMemory: '0198f744-8e18-7ae2-a780-52a0e20c1983',
+  accountGoalsMemory: '0198f744-8e18-7ae2-a780-52a0e20c1984',
+  accountContentStyleMemory: '0198f744-8e18-7ae2-a780-52a0e20c1985',
+  accountForbiddenStyleMemory: '0198f744-8e18-7ae2-a780-52a0e20c1986',
 } as const;
 
 const systemSkillSeeds = [
@@ -237,7 +244,7 @@ export function seedDemoData(options: { reset?: boolean } = {}) {
         id: DEMO_IDS.phaseSetting,
         organizationId: DEMO_IDS.organization,
         key: 'product.phase',
-        valueJson: JSON.stringify({ phase: 6, label: 'AI 基础设施' }),
+        valueJson: JSON.stringify({ phase: 7, label: '长期记忆与上下文' }),
         isSecret: false,
         isDemo: true,
         createdAt: now,
@@ -245,7 +252,7 @@ export function seedDemoData(options: { reset?: boolean } = {}) {
       })
       .onConflictDoUpdate({
         target: [appSettings.organizationId, appSettings.key],
-        set: { valueJson: JSON.stringify({ phase: 6, label: 'AI 基础设施' }), updatedAt: now },
+        set: { valueJson: JSON.stringify({ phase: 7, label: '长期记忆与上下文' }), updatedAt: now },
       })
       .run();
 
@@ -373,6 +380,29 @@ export function seedDemoData(options: { reset?: boolean } = {}) {
     } else {
       db.insert(monthlyPlans).values(plan).onConflictDoNothing().run();
       db.insert(contents).values(content).onConflictDoNothing().run();
+    }
+
+    for (const memory of [
+      { id: DEMO_IDS.brandPositioningMemory, scopeType: 'brand' as const, scopeId: b.id, memoryKey: 'brand.positioning', memoryType: 'brand' as const, valueJson: b.brandPositioning, summary: `品牌定位：${b.brandPositioning}`, importance: 5, sourceId: b.id },
+      { id: DEMO_IDS.brandProductsMemory, scopeType: 'brand' as const, scopeId: b.id, memoryKey: 'brand.core_products', memoryType: 'brand' as const, valueJson: b.coreProductsJson, summary: `核心产品：${b.coreProductsJson.join('、')}`, importance: 5, sourceId: b.id },
+      { id: DEMO_IDS.brandSellingPointsMemory, scopeType: 'brand' as const, scopeId: b.id, memoryKey: 'brand.core_selling_points', memoryType: 'brand' as const, valueJson: b.coreSellingPointsJson, summary: `核心卖点：${b.coreSellingPointsJson.join('、')}`, importance: 5, sourceId: b.id },
+      { id: DEMO_IDS.accountGoalsMemory, scopeType: 'account' as const, scopeId: a.id, memoryKey: 'account.goals', memoryType: 'preference' as const, valueJson: a.accountGoalJson, summary: `账号目标：${a.accountGoalJson.join('、')}`, importance: 4, sourceId: a.id },
+      { id: DEMO_IDS.accountContentStyleMemory, scopeType: 'account' as const, scopeId: a.id, memoryKey: 'account.content_style', memoryType: 'preference' as const, valueJson: a.contentStyleJson, summary: `内容风格：${a.contentStyleJson.join('、')}`, importance: 4, sourceId: a.id },
+      { id: DEMO_IDS.accountForbiddenStyleMemory, scopeType: 'account' as const, scopeId: a.id, memoryKey: 'account.forbidden_style', memoryType: 'preference' as const, valueJson: a.forbiddenStyleJson, summary: `禁用风格：${a.forbiddenStyleJson.join('、')}`, importance: 5, sourceId: a.id },
+    ]) {
+      db.insert(memories).values(memorySchema.parse({
+        ...memory,
+        organizationId: DEMO_IDS.organization,
+        confidence: 1,
+        sourceType: 'brand_profile',
+        effectiveAt: now,
+        expiresAt: null,
+        status: 'active',
+        supersedesMemoryId: null,
+        createdBy: DEMO_IDS.owner,
+        isDemo: true,
+        createdAt: now,
+      })).onConflictDoNothing().run();
     }
 
     if (options.reset) {

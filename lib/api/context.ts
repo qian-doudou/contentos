@@ -3,6 +3,7 @@ import { permissionService } from '@/lib/auth/permissions';
 import { masterDataService } from '@/lib/master-data/service';
 import { contentService } from '@/lib/content/service';
 import { aiInfrastructureService } from '@/lib/ai/service';
+import { memoryService } from '@/lib/memory/service';
 import { z } from 'zod';
 
 export const DEV_USER_COOKIE = 'contentos_dev_user_id';
@@ -44,4 +45,8 @@ export function currentContentData(request?: Request) {
 export function currentAiInfrastructure(request?: Request) {
   const { organizationId, userId } = localContextIds(request);
   return aiInfrastructureService(db, organizationId, userId);
+}
+export function currentMemory(request?: Request) {
+  const { organizationId, userId } = localContextIds(request);
+  return memoryService(db, organizationId, userId);
 }
