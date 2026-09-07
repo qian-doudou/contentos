@@ -18,7 +18,10 @@ import { dashboardResponseSchema, type DashboardData, type DashboardRun } from '
 import { roleLabels } from '@/lib/auth/contracts';
 
 const runTypeLabels = { production: '生产', test: '测试', eval: '评测' } as const;
-const statusLabels = { pending: '待执行', running: '运行中', succeeded: '已成功', failed: '已失败', cancelled: '已取消' } as const;
+const statusLabels = {
+  queued: '排队中', running: '运行中', completed: '已完成', completed_with_warnings: '完成但有警告',
+  manual_review_required: '需人工审核', failed: '已失败', cancelled: '已取消',
+} as const;
 
 function formatDate(value: string | null) {
   if (!value) return '—';
@@ -26,7 +29,7 @@ function formatDate(value: string | null) {
 }
 
 function StatusBadge({ status }: { status: DashboardRun['status'] }) {
-  const variant = status === 'failed' ? 'destructive' : status === 'succeeded' ? 'secondary' : 'outline';
+  const variant = status === 'failed' ? 'destructive' : status === 'completed' ? 'secondary' : 'outline';
   return <Badge variant={variant}>{statusLabels[status]}</Badge>;
 }
 
@@ -164,7 +167,7 @@ export function Dashboard() {
   return (
     <div className="space-y-6">
       <section className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div><p className="eyebrow">工作台 / 系统总览</p><h1 className="page-title">内容运营控制台</h1><p className="page-description">{data.organization?.name ?? '尚未创建组织'} · 第五阶段内容工作流</p></div>
+        <div><p className="eyebrow">工作台 / 系统总览</p><h1 className="page-title">内容运营控制台</h1><p className="page-description">{data.organization?.name ?? '尚未创建组织'} · 第六阶段 AI 基础设施</p></div>
         <div className="flex flex-wrap items-center gap-2">
           <Badge className="h-7 bg-emerald-100 px-3 text-emerald-700"><CheckCircle2 />SQLite 已连接</Badge>
           <Badge className="h-7 bg-cyan-100 px-3 text-cyan-800"><Bot />千问 {data.system.llmMode === 'mock' ? 'Mock' : 'Live'}</Badge>
@@ -189,7 +192,7 @@ export function Dashboard() {
             <CardAction className="flex items-center gap-2">
               <Select value={statusFilter} onValueChange={(value) => setStatusFilter(String(value))}>
                 <SelectTrigger aria-label="按状态筛选" className="min-w-28"><SelectValue placeholder="全部状态" /></SelectTrigger>
-                <SelectContent><SelectItem value="all">全部状态</SelectItem><SelectItem value="running">运行中</SelectItem><SelectItem value="succeeded">已成功</SelectItem><SelectItem value="failed">已失败</SelectItem></SelectContent>
+                <SelectContent><SelectItem value="all">全部状态</SelectItem><SelectItem value="queued">排队中</SelectItem><SelectItem value="running">运行中</SelectItem><SelectItem value="completed">已完成</SelectItem><SelectItem value="failed">已失败</SelectItem></SelectContent>
               </Select>
               <RunStructureDrawer />
             </CardAction>

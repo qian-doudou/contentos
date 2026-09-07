@@ -1,7 +1,8 @@
 import { and, eq } from 'drizzle-orm';
 import { db, sqlite } from './client';
 import {
-  accounts, appSettings, auditLogs, brands, clientMembers, clients, contents, monthlyPlans, organizations, stores, users,
+  accounts, appSettings, auditLogs, brands, clientMembers, clients, contents, monthlyPlans,
+  organizationAiQuotas, organizations, skillVersions, skills, stores, users,
 } from './schema';
 import { accountSchema, brandSchema, clientSchema, storeSchema, accountDefaults, brandDefaults, clientDefaults, storeDefaults } from '../lib/master-data/contracts';
 import { contentSchema, monthlyPlanSchema } from '../lib/content/contracts';
@@ -22,7 +23,105 @@ export const DEMO_IDS = {
   viewerMembership: '0198f744-8e18-7ae2-a780-52a0e20c1952',
   monthlyPlan: '0198f744-8e18-7ae2-a780-52a0e20c1961',
   content: '0198f744-8e18-7ae2-a780-52a0e20c1962',
+  aiQuota: '0198f744-8e18-7ae2-a780-52a0e20c1971',
 } as const;
+
+const systemSkillSeeds = [
+  {
+    id: '0198f744-8e18-7ae2-a780-52a0e20c1a01',
+    versionId: '0198f744-8e18-7ae2-a780-52a0e20c1b01',
+    code: 'content_planner',
+    name: '内容策划器',
+    description: '为后续月度内容策划提供版本化 Skill 容器。',
+    modelProfile: 'standard' as const,
+    pointCost: 2,
+  },
+  {
+    id: '0198f744-8e18-7ae2-a780-52a0e20c1a02',
+    versionId: '0198f744-8e18-7ae2-a780-52a0e20c1b02',
+    code: 'script_generator',
+    name: '脚本生成器',
+    description: '为后续脚本生成任务提供统一调用入口。',
+    modelProfile: 'strong' as const,
+    pointCost: 3,
+  },
+  {
+    id: '0198f744-8e18-7ae2-a780-52a0e20c1a03',
+    versionId: '0198f744-8e18-7ae2-a780-52a0e20c1b03',
+    code: 'script_rewriter',
+    name: '脚本改写器',
+    description: '为后续按审核意见改写脚本提供基础能力。',
+    modelProfile: 'standard' as const,
+    pointCost: 2,
+  },
+  {
+    id: '0198f744-8e18-7ae2-a780-52a0e20c1a04',
+    versionId: '0198f744-8e18-7ae2-a780-52a0e20c1b04',
+    code: 'duplicate_judge',
+    name: '重复度判定',
+    description: '为后续历史内容去重提供判定容器。',
+    modelProfile: 'light' as const,
+    pointCost: 1,
+  },
+  {
+    id: '0198f744-8e18-7ae2-a780-52a0e20c1a05',
+    versionId: '0198f744-8e18-7ae2-a780-52a0e20c1b05',
+    code: 'memory_candidate_extractor',
+    name: '记忆候选提取',
+    description: '为后续长期记忆候选项提取提供基础能力。',
+    modelProfile: 'light' as const,
+    pointCost: 1,
+  },
+  {
+    id: '0198f744-8e18-7ae2-a780-52a0e20c1a06',
+    versionId: '0198f744-8e18-7ae2-a780-52a0e20c1b06',
+    code: 'performance_analyzer',
+    name: '表现分析器',
+    description: '为后续内容表现复盘提供统一 Skill 定义。',
+    modelProfile: 'standard' as const,
+    pointCost: 2,
+  },
+  {
+    id: '0198f744-8e18-7ae2-a780-52a0e20c1a07',
+    versionId: '0198f744-8e18-7ae2-a780-52a0e20c1b07',
+    code: 'strategy_planner',
+    name: '策略规划器',
+    description: '为后续下一周期运营策略提供版本化能力。',
+    modelProfile: 'strong' as const,
+    pointCost: 3,
+  },
+  {
+    id: '0198f744-8e18-7ae2-a780-52a0e20c1a08',
+    versionId: '0198f744-8e18-7ae2-a780-52a0e20c1b08',
+    code: 'quality_checker',
+    name: '质量检查器',
+    description: '为后续结构、风险与质量检查提供基础能力。',
+    modelProfile: 'light' as const,
+    pointCost: 1,
+  },
+] as const;
+
+const skillInputSchema = {
+  type: 'object' as const,
+  properties: {
+    brief: { type: 'string' as const, minLength: 1, maxLength: 2000 },
+  },
+  required: ['brief'],
+  additionalProperties: false,
+};
+const skillOutputSchema = {
+  type: 'object' as const,
+  properties: {
+    result: { type: 'string' as const, minLength: 1, maxLength: 5000 },
+    warnings: {
+      type: 'array' as const,
+      items: { type: 'string' as const },
+      maxItems: 20,
+    },
+  },
+  required: ['result', 'warnings'],
+  additionalProperties: false,
+};
 
 const demoUsers = [
   { id: DEMO_IDS.owner, name: '运营负责人', role: 'owner' as const },
@@ -77,12 +176,68 @@ export function seedDemoData(options: { reset?: boolean } = {}) {
       if (!demoMember) throw new Error(`Demo user ID ${member.id} is already owned by another record`);
     }
 
+    for (const definition of systemSkillSeeds) {
+      const skill = {
+        id: definition.id,
+        organizationId: null,
+        code: definition.code,
+        name: definition.name,
+        description: definition.description,
+        systemPrompt: `你是 ContentOS 的${definition.name}基础设施测试 Skill。只返回符合输出 Schema 的 JSON，不执行任何业务写入。`,
+        userPromptTemplate: '请处理以下测试输入：\n{{input_json}}',
+        inputSchemaJson: skillInputSchema,
+        outputSchemaJson: skillOutputSchema,
+        modelProfile: definition.modelProfile,
+        pointCost: definition.pointCost,
+        enabled: true,
+        currentVersion: 1,
+        isDemo: false,
+        createdAt: now,
+        updatedAt: now,
+      };
+      db.insert(skills).values(skill).onConflictDoNothing().run();
+      db.insert(skillVersions)
+        .values({
+          id: definition.versionId,
+          organizationId: null,
+          skillId: definition.id,
+          version: 1,
+          systemPrompt: skill.systemPrompt,
+          userPromptTemplate: skill.userPromptTemplate,
+          inputSchemaJson: skill.inputSchemaJson,
+          outputSchemaJson: skill.outputSchemaJson,
+          modelProfile: skill.modelProfile,
+          pointCost: skill.pointCost,
+          changeReason: '系统初始版本',
+          createdBy: null,
+          isDemo: false,
+          createdAt: now,
+        })
+        .onConflictDoNothing()
+        .run();
+    }
+
+    db.insert(organizationAiQuotas)
+      .values({
+        id: DEMO_IDS.aiQuota,
+        organizationId: DEMO_IDS.organization,
+        periodStart: '2026-01-01T00:00:00.000Z',
+        periodEnd: '2027-01-01T00:00:00.000Z',
+        quotaPoints: 1000,
+        usedPoints: 0,
+        isDemo: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoNothing()
+      .run();
+
     db.insert(appSettings)
       .values({
         id: DEMO_IDS.phaseSetting,
         organizationId: DEMO_IDS.organization,
         key: 'product.phase',
-        valueJson: JSON.stringify({ phase: 5, label: '内容工作流' }),
+        valueJson: JSON.stringify({ phase: 6, label: 'AI 基础设施' }),
         isSecret: false,
         isDemo: true,
         createdAt: now,
@@ -90,7 +245,7 @@ export function seedDemoData(options: { reset?: boolean } = {}) {
       })
       .onConflictDoUpdate({
         target: [appSettings.organizationId, appSettings.key],
-        set: { valueJson: JSON.stringify({ phase: 5, label: '内容工作流' }), updatedAt: now },
+        set: { valueJson: JSON.stringify({ phase: 6, label: 'AI 基础设施' }), updatedAt: now },
       })
       .run();
 

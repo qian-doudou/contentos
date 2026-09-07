@@ -1,8 +1,9 @@
-import { check, foreignKey, index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { check, foreignKey, index, integer, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';
 import {
-  accountTypes, businessStatuses, contentGoals, contentPriorities, contentStatuses, contentStatusTriggers,
-  contentTypes, cooperationStatuses, hookTypes,
+  accountTypes, aiLedgerTypes, aiUsageStatuses, businessStatuses, contentGoals, contentPriorities,
+  contentStatuses, contentStatusTriggers, contentTypes, cooperationStatuses, hookTypes, modelProfiles,
+  priceConfigStatuses,
 } from './constants';
 import {
   organizationStatuses,
@@ -84,7 +85,9 @@ export const runs = sqliteTable(
   },
   (table) => [
     index('idx_runs_organization_created_at').on(table.organizationId, table.createdAt),
-    index('idx_runs_status').on(table.status),
+    index('idx_runs_organization_status').on(table.organizationId, table.status),
+    uniqueIndex('uq_runs_organization_id').on(table.organizationId, table.id),
+    check('runs_status_valid', sql`${table.status} IN ('queued', 'running', 'completed', 'completed_with_warnings', 'manual_review_required', 'failed', 'cancelled')`),
   ],
 );
 
@@ -95,9 +98,7 @@ export const runSteps = sqliteTable(
     organizationId: text('organization_id')
       .notNull()
       .references(() => organizations.id, { onDelete: 'cascade' }),
-    runId: text('run_id')
-      .notNull()
-      .references(() => runs.id, { onDelete: 'cascade' }),
+    runId: text('run_id').notNull(),
     sequence: integer('sequence').notNull(),
     stepCode: text('step_code').notNull(),
     status: text('status', { enum: runStepStatuses }).notNull(),
@@ -113,6 +114,8 @@ export const runSteps = sqliteTable(
   (table) => [
     uniqueIndex('idx_run_steps_run_sequence').on(table.runId, table.sequence),
     index('idx_run_steps_organization_id').on(table.organizationId),
+    uniqueIndex('uq_run_steps_organization_id').on(table.organizationId, table.id),
+    foreignKey({ columns: [table.organizationId, table.runId], foreignColumns: [runs.organizationId, runs.id] }).onDelete('cascade'),
   ],
 );
 
@@ -380,3 +383,281 @@ export type AccountRow = typeof accounts.$inferSelect;
 export type MonthlyPlanRow = typeof monthlyPlans.$inferSelect;
 export type ContentRow = typeof contents.$inferSelect;
 export type ContentStatusLogRow = typeof contentStatusLogs.$inferSelect;
+
+export const skills = sqliteTable(
+  'skills',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').references(() => organizations.id),
+    code: text('code').notNull(),
+    name: text('name').notNull(),
+    description: text('description').notNull().default(''),
+    systemPrompt: text('system_prompt').notNull(),
+    userPromptTemplate: text('user_prompt_template').notNull(),
+    inputSchemaJson: text('input_schema_json', { mode: 'json' })
+      .$type<Record<string, unknown>>()
+      .notNull(),
+    outputSchemaJson: text('output_schema_json', { mode: 'json' })
+      .$type<Record<string, unknown>>()
+      .notNull(),
+    modelProfile: text('model_profile', { enum: modelProfiles }).notNull(),
+    pointCost: integer('point_cost').notNull().default(0),
+    enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+    currentVersion: integer('current_version').notNull().default(1),
+    isDemo: integer('is_demo', { mode: 'boolean' }).notNull().default(false),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (t) => [
+    uniqueIndex('uq_skills_system_code')
+      .on(t.code)
+      .where(sql`${t.organizationId} IS NULL`),
+    uniqueIndex('uq_skills_organization_code')
+      .on(t.organizationId, t.code)
+      .where(sql`${t.organizationId} IS NOT NULL`),
+    index('idx_skills_organization_enabled').on(t.organizationId, t.enabled),
+    check('skills_code_valid', sql`length(trim(${t.code})) > 0`),
+    check(
+      'skills_model_profile_valid',
+      sql`${t.modelProfile} IN ('light', 'standard', 'strong')`,
+    ),
+    check(
+      'skills_point_cost_nonnegative',
+      sql`${t.pointCost} >= 0 AND typeof(${t.pointCost}) = 'integer'`,
+    ),
+    check(
+      'skills_version_positive',
+      sql`${t.currentVersion} >= 1 AND typeof(${t.currentVersion}) = 'integer'`,
+    ),
+  ],
+);
+
+export const skillVersions = sqliteTable(
+  'skill_versions',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').references(() => organizations.id),
+    skillId: text('skill_id')
+      .notNull()
+      .references(() => skills.id),
+    version: integer('version').notNull(),
+    systemPrompt: text('system_prompt').notNull(),
+    userPromptTemplate: text('user_prompt_template').notNull(),
+    inputSchemaJson: text('input_schema_json', { mode: 'json' })
+      .$type<Record<string, unknown>>()
+      .notNull(),
+    outputSchemaJson: text('output_schema_json', { mode: 'json' })
+      .$type<Record<string, unknown>>()
+      .notNull(),
+    modelProfile: text('model_profile', { enum: modelProfiles }).notNull(),
+    pointCost: integer('point_cost').notNull(),
+    changeReason: text('change_reason').notNull(),
+    createdBy: text('created_by').references(() => users.id),
+    isDemo: integer('is_demo', { mode: 'boolean' }).notNull().default(false),
+    createdAt: text('created_at').notNull(),
+  },
+  (t) => [
+    uniqueIndex('uq_skill_versions_skill_version').on(t.skillId, t.version),
+    index('idx_skill_versions_organization_skill').on(
+      t.organizationId,
+      t.skillId,
+    ),
+    check(
+      'skill_versions_version_positive',
+      sql`${t.version} >= 1 AND typeof(${t.version}) = 'integer'`,
+    ),
+    check(
+      'skill_versions_model_profile_valid',
+      sql`${t.modelProfile} IN ('light', 'standard', 'strong')`,
+    ),
+    check(
+      'skill_versions_point_cost_nonnegative',
+      sql`${t.pointCost} >= 0 AND typeof(${t.pointCost}) = 'integer'`,
+    ),
+  ],
+);
+
+export const modelPriceConfigs = sqliteTable(
+  'model_price_configs',
+  {
+    id: text('id').primaryKey(),
+    model: text('model').notNull(),
+    inputPricePerMillion: real('input_price_per_million'),
+    outputPricePerMillion: real('output_price_per_million'),
+    effectiveAt: text('effective_at').notNull(),
+    status: text('status', { enum: priceConfigStatuses }).notNull(),
+    createdAt: text('created_at').notNull(),
+  },
+  (t) => [
+    uniqueIndex('uq_model_price_configs_model_effective').on(
+      t.model,
+      t.effectiveAt,
+    ),
+    index('idx_model_price_configs_lookup').on(
+      t.model,
+      t.status,
+      t.effectiveAt,
+    ),
+    check(
+      'model_price_configs_status_valid',
+      sql`${t.status} IN ('active', 'inactive')`,
+    ),
+    check(
+      'model_price_configs_input_nonnegative',
+      sql`${t.inputPricePerMillion} IS NULL OR ${t.inputPricePerMillion} >= 0`,
+    ),
+    check(
+      'model_price_configs_output_nonnegative',
+      sql`${t.outputPricePerMillion} IS NULL OR ${t.outputPricePerMillion} >= 0`,
+    ),
+  ],
+);
+
+export const organizationAiQuotas = sqliteTable(
+  'organization_ai_quotas',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id')
+      .notNull()
+      .references(() => organizations.id),
+    periodStart: text('period_start').notNull(),
+    periodEnd: text('period_end').notNull(),
+    quotaPoints: integer('quota_points').notNull(),
+    usedPoints: integer('used_points').notNull().default(0),
+    isDemo: integer('is_demo', { mode: 'boolean' }).notNull().default(false),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (t) => [
+    uniqueIndex('uq_organization_ai_quotas_period').on(
+      t.organizationId,
+      t.periodStart,
+      t.periodEnd,
+    ),
+    index('idx_organization_ai_quotas_active').on(
+      t.organizationId,
+      t.periodStart,
+      t.periodEnd,
+    ),
+    check(
+      'organization_ai_quotas_period_valid',
+      sql`${t.periodStart} < ${t.periodEnd}`,
+    ),
+    check(
+      'organization_ai_quotas_points_valid',
+      sql`${t.quotaPoints} >= 0 AND ${t.usedPoints} >= 0 AND ${t.usedPoints} <= ${t.quotaPoints}`,
+    ),
+  ],
+);
+
+export const aiPointLedger = sqliteTable(
+  'ai_point_ledger',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id')
+      .notNull()
+      .references(() => organizations.id),
+    runId: text('run_id'),
+    skillCode: text('skill_code').notNull(),
+    points: integer('points').notNull(),
+    ledgerType: text('ledger_type', { enum: aiLedgerTypes }).notNull(),
+    reason: text('reason').notNull(),
+    isDemo: integer('is_demo', { mode: 'boolean' }).notNull().default(false),
+    createdAt: text('created_at').notNull(),
+  },
+  (t) => [
+    index('idx_ai_point_ledger_organization_created').on(
+      t.organizationId,
+      t.createdAt,
+    ),
+    uniqueIndex('uq_ai_point_ledger_run_consume')
+      .on(t.organizationId, t.runId)
+      .where(sql`${t.ledgerType} = 'consume' AND ${t.runId} IS NOT NULL`),
+    foreignKey({
+      columns: [t.organizationId, t.runId],
+      foreignColumns: [runs.organizationId, runs.id],
+    }),
+    check(
+      'ai_point_ledger_type_valid',
+      sql`${t.ledgerType} IN ('consume', 'grant', 'refund', 'adjustment')`,
+    ),
+    check(
+      'ai_point_ledger_points_positive',
+      sql`${t.points} > 0 AND typeof(${t.points}) = 'integer'`,
+    ),
+  ],
+);
+
+export const aiUsageLogs = sqliteTable(
+  'ai_usage_logs',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id')
+      .notNull()
+      .references(() => organizations.id),
+    runId: text('run_id').notNull(),
+    runStepId: text('run_step_id').notNull(),
+    runType: text('run_type', { enum: runTypes }).notNull(),
+    userId: text('user_id').notNull(),
+    clientId: text('client_id'),
+    accountId: text('account_id'),
+    skillCode: text('skill_code').notNull(),
+    skillVersion: integer('skill_version').notNull(),
+    providerRequestId: text('provider_request_id'),
+    model: text('model').notNull(),
+    inputTokens: integer('input_tokens'),
+    outputTokens: integer('output_tokens'),
+    estimatedCost: real('estimated_cost'),
+    billedPoints: integer('billed_points').notNull().default(0),
+    durationMs: integer('duration_ms').notNull(),
+    status: text('status', { enum: aiUsageStatuses }).notNull(),
+    isDemo: integer('is_demo', { mode: 'boolean' }).notNull().default(false),
+    createdAt: text('created_at').notNull(),
+  },
+  (t) => [
+    index('idx_ai_usage_logs_organization_created').on(
+      t.organizationId,
+      t.createdAt,
+    ),
+    index('idx_ai_usage_logs_run').on(t.organizationId, t.runId),
+    foreignKey({
+      columns: [t.organizationId, t.runId],
+      foreignColumns: [runs.organizationId, runs.id],
+    }),
+    foreignKey({
+      columns: [t.organizationId, t.runStepId],
+      foreignColumns: [runSteps.organizationId, runSteps.id],
+    }),
+    foreignKey({
+      columns: [t.organizationId, t.userId],
+      foreignColumns: [users.organizationId, users.id],
+    }),
+    foreignKey({
+      columns: [t.organizationId, t.clientId],
+      foreignColumns: [clients.organizationId, clients.id],
+    }),
+    foreignKey({
+      columns: [t.organizationId, t.accountId],
+      foreignColumns: [accounts.organizationId, accounts.id],
+    }),
+    check(
+      'ai_usage_logs_status_valid',
+      sql`${t.status} IN ('completed', 'failed')`,
+    ),
+    check(
+      'ai_usage_logs_tokens_valid',
+      sql`(${t.inputTokens} IS NULL OR ${t.inputTokens} >= 0) AND (${t.outputTokens} IS NULL OR ${t.outputTokens} >= 0)`,
+    ),
+    check(
+      'ai_usage_logs_values_valid',
+      sql`${t.skillVersion} >= 1 AND ${t.billedPoints} >= 0 AND ${t.durationMs} >= 0 AND (${t.estimatedCost} IS NULL OR ${t.estimatedCost} >= 0)`,
+    ),
+  ],
+);
+
+export type SkillRow = typeof skills.$inferSelect;
+export type SkillVersionRow = typeof skillVersions.$inferSelect;
+export type ModelPriceConfigRow = typeof modelPriceConfigs.$inferSelect;
+export type OrganizationAiQuotaRow = typeof organizationAiQuotas.$inferSelect;
+export type AiPointLedgerRow = typeof aiPointLedger.$inferSelect;
+export type AiUsageLogRow = typeof aiUsageLogs.$inferSelect;

@@ -32,7 +32,7 @@ describe('business schemas', () => {
       runType: 'eval',
       subjectType: 'script',
       subjectId: null,
-      status: 'pending',
+      status: 'queued',
       startedAt: null,
       finishedAt: null,
       createdBy: null,

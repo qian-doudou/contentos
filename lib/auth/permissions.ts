@@ -7,11 +7,24 @@ import { organizationSchema, userSchema } from '@/db/validation';
 import { ApiError } from '@/lib/api/envelope';
 
 type Database = BetterSQLite3Database<typeof tables>;
-export type OrganizationPermission = 'master_data.write' | 'team.read' | 'system.dangerous';
+export type OrganizationPermission =
+  | 'master_data.write'
+  | 'team.read'
+  | 'skills.read'
+  | 'skills.write'
+  | 'ai.test'
+  | 'ai.settings'
+  | 'runs.read'
+  | 'system.dangerous';
 
 const organizationRoleMatrix: Record<OrganizationPermission, readonly User['role'][]> = {
   'master_data.write': ['owner', 'admin'],
   'team.read': ['owner', 'admin'],
+  'skills.read': ['owner', 'admin', 'operator'],
+  'skills.write': ['owner', 'admin'],
+  'ai.test': ['owner', 'admin', 'operator'],
+  'ai.settings': ['owner', 'admin'],
+  'runs.read': ['owner', 'admin'],
   'system.dangerous': ['owner'],
 };
 const masterDataReaderRoles = new Set<User['role']>(['owner', 'admin', 'operator', 'viewer']);
