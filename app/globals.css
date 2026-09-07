@@ -1,0 +1,54 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background); --color-foreground: var(--foreground);
+  --color-card: var(--card); --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover); --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary); --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary); --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted); --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent); --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive); --color-border: var(--border);
+  --color-input: var(--input); --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar); --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary); --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent); --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border); --color-sidebar-ring: var(--sidebar-ring);
+  --radius-sm: calc(var(--radius) * .65); --radius-md: calc(var(--radius) * .82);
+  --radius-lg: var(--radius); --radius-xl: calc(var(--radius) * 1.35); --radius-2xl: calc(var(--radius) * 1.75);
+}
+
+:root {
+  --background: oklch(.985 .004 240); --foreground: oklch(.21 .03 251);
+  --card: oklch(1 0 0); --card-foreground: oklch(.21 .03 251);
+  --popover: oklch(1 0 0); --popover-foreground: oklch(.21 .03 251);
+  --primary: oklch(.27 .055 246); --primary-foreground: oklch(.99 0 0);
+  --secondary: oklch(.96 .008 240); --secondary-foreground: oklch(.27 .055 246);
+  --muted: oklch(.96 .008 240); --muted-foreground: oklch(.52 .025 247);
+  --accent: oklch(.93 .035 210); --accent-foreground: oklch(.27 .055 246);
+  --destructive: oklch(.58 .23 28); --border: oklch(.91 .012 243);
+  --input: oklch(.91 .012 243); --ring: oklch(.7 .12 210); --radius: .75rem;
+  --sidebar: oklch(.21 .045 250); --sidebar-foreground: oklch(.9 .012 240);
+  --sidebar-primary: oklch(.79 .14 195); --sidebar-primary-foreground: oklch(.18 .035 250);
+  --sidebar-accent: oklch(.28 .04 248); --sidebar-accent-foreground: oklch(.98 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%); --sidebar-ring: oklch(.79 .14 195);
+}
+
+* { border-color: var(--border); }
+html { background: var(--background); }
+body { margin: 0; min-width: 320px; background: var(--background); color: var(--foreground); font-family: Arial, "PingFang SC", "Microsoft YaHei", sans-serif; }
+button, a { -webkit-tap-highlight-color: transparent; }
+
+@layer components {
+  .nav-item { @apply flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-400 transition-colors hover:bg-white/7 hover:text-white; }
+  .surface-card { @apply rounded-2xl border border-slate-200/90 bg-white p-5 shadow-[0_1px_2px_rgb(15_23_42/0.03)]; }
+  .card-icon { @apply grid size-9 place-items-center rounded-xl bg-cyan-50 text-cyan-700; }
+  .eyebrow, .section-kicker { @apply text-xs font-semibold uppercase tracking-[0.16em] text-cyan-700; }
+  .page-title { @apply mt-2 text-3xl font-semibold tracking-tight text-slate-950 lg:text-4xl; }
+  .page-description { @apply mt-2 max-w-2xl text-base leading-7 text-slate-500; }
+  .section-title { @apply mt-1 text-xl font-semibold tracking-tight text-slate-950; }
+}
