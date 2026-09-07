@@ -3,6 +3,7 @@ import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { z } from 'zod';
 import * as tables from '@/db/schema';
 import { ApiError } from '@/lib/api/envelope';
+import { permissionService } from '@/lib/auth/permissions';
 import {
   accountDetailSchema, accountQuerySchema, accountSchema, brandSchema, clientDetailSchema, clientListSchema,
   clientQuerySchema, clientSchema, createAccountSchema, createBrandSchema, createClientSchema, createStoreSchema,
@@ -10,35 +11,37 @@ import {
 } from './contracts';
 
 type Database = BetterSQLite3Database<typeof tables>;
-const { clients, brands, stores, accounts, users, organizations, auditLogs } = tables;
+const { clients, brands, stores, accounts, users, auditLogs } = tables;
 const missing = () => new ApiError(404, 'NOT_FOUND', '记录不存在或不属于当前组织');
 
 // Only call with a trusted server context. Never derive these IDs from the request body or headers.
 export function masterDataService(db: Database, organizationId: string, userId: string) {
-  z.uuid().parse(organizationId);
-  z.uuid().parse(userId);
-  const organization = db.select().from(organizations).where(and(eq(organizations.id, organizationId), eq(organizations.status, 'active'))).get();
-  const actor = db.select().from(users).where(and(eq(users.organizationId, organizationId), eq(users.id, userId), eq(users.status, 'active'))).get();
-  if (!organization || !actor) throw new ApiError(403, 'ORGANIZATION_ACCESS_DENIED', '当前本地组织或成员不可用，请检查服务端配置与 seed');
+  const permissions = permissionService(db, organizationId, userId);
+  const organization = permissions.organization;
+  const access = { canWrite: permissions.canWriteMasterData };
 
-  const client = (id: string) => {
+  const client = (id: string, authorize = true) => {
     const row = db.select().from(clients).where(and(eq(clients.organizationId, organizationId), eq(clients.id, z.uuid().parse(id)))).get();
     if (!row) throw missing();
+    if (authorize) permissions.requireClientRead(row.id);
     return clientSchema.parse(row);
   };
-  const brand = (id: string) => {
+  const brand = (id: string, authorize = true) => {
     const row = db.select().from(brands).where(and(eq(brands.organizationId, organizationId), eq(brands.id, z.uuid().parse(id)))).get();
     if (!row) throw missing();
+    if (authorize) permissions.requireClientRead(row.clientId);
     return brandSchema.parse(row);
   };
-  const store = (id: string) => {
+  const store = (id: string, authorize = true) => {
     const row = db.select().from(stores).where(and(eq(stores.organizationId, organizationId), eq(stores.id, z.uuid().parse(id)))).get();
     if (!row) throw missing();
+    if (authorize) permissions.requireClientRead(brand(row.brandId, false).clientId);
     return storeSchema.parse(row);
   };
-  const account = (id: string) => {
+  const account = (id: string, authorize = true) => {
     const row = db.select().from(accounts).where(and(eq(accounts.organizationId, organizationId), eq(accounts.id, z.uuid().parse(id)))).get();
     if (!row) throw missing();
+    if (authorize) permissions.requireClientRead(row.clientId);
     return accountSchema.parse(row);
   };
   const validateOwner = (id: string | null) => {
@@ -72,24 +75,37 @@ export function masterDataService(db: Database, organizationId: string, userId: 
     listClients(input: unknown) {
       const query = clientQuerySchema.parse(input);
       if (query.ownerUserId) validateOwner(query.ownerUserId);
+      const readableClientIds = permissions.readableClientIds();
       const predicates = [eq(clients.organizationId, organizationId)];
+      if (readableClientIds) predicates.push(readableClientIds.length ? inArray(clients.id, readableClientIds) : sql`0 = 1`);
       // instr treats SQL wildcard characters literally; all values remain bound parameters.
       if (query.search) predicates.push(sql`instr(lower(${clients.clientName}), lower(${query.search})) > 0`);
       if (query.industry) predicates.push(eq(clients.industry, query.industry));
       if (query.ownerUserId) predicates.push(eq(clients.ownerUserId, query.ownerUserId));
       if (query.cooperationStatus) predicates.push(eq(clients.cooperationStatus, query.cooperationStatus));
       if (query.status) predicates.push(eq(clients.status, query.status));
-      return db.transaction(() => clientListSchema.parse({
-        items: db.select().from(clients).where(and(...predicates)).orderBy(desc(clients.createdAt), asc(clients.id))
-          .limit(query.pageSize).offset((query.page - 1) * query.pageSize).all(),
-        total: db.select({ value: count() }).from(clients).where(and(...predicates)).get()?.value ?? 0,
-        page: query.page, pageSize: query.pageSize,
-        filters: {
-          industries: db.selectDistinct({ industry: clients.industry }).from(clients).where(eq(clients.organizationId, organizationId))
-            .orderBy(asc(clients.industry)).all().map(row => row.industry),
-          owners: db.select().from(users).where(eq(users.organizationId, organizationId)).orderBy(asc(users.name)).all(),
-        },
-      }));
+      return db.transaction(() => {
+        const visiblePredicates = [eq(clients.organizationId, organizationId)];
+        if (readableClientIds) visiblePredicates.push(readableClientIds.length ? inArray(clients.id, readableClientIds) : sql`0 = 1`);
+        const visibleClients = db.select({ industry: clients.industry, ownerUserId: clients.ownerUserId }).from(clients)
+          .where(and(...visiblePredicates)).all();
+        const ownerIds = [...new Set(visibleClients.flatMap(row => row.ownerUserId ? [row.ownerUserId] : []))];
+        return clientListSchema.parse({
+          items: db.select().from(clients).where(and(...predicates)).orderBy(desc(clients.createdAt), asc(clients.id))
+            .limit(query.pageSize).offset((query.page - 1) * query.pageSize).all(),
+          total: db.select({ value: count() }).from(clients).where(and(...predicates)).get()?.value ?? 0,
+          page: query.page, pageSize: query.pageSize,
+          filters: {
+            industries: [...new Set(visibleClients.map(row => row.industry))].sort(),
+            owners: readableClientIds === null
+              ? db.select().from(users).where(eq(users.organizationId, organizationId)).orderBy(asc(users.name)).all()
+              : ownerIds.length ? db.select().from(users).where(and(
+                eq(users.organizationId, organizationId), inArray(users.id, ownerIds),
+              )).orderBy(asc(users.name)).all() : [],
+          },
+          permissions: access,
+        });
+      });
     },
     clientDetail(id: string) {
       return db.transaction(() => {
@@ -101,10 +117,12 @@ export function masterDataService(db: Database, organizationId: string, userId: 
           brands: bs,
           stores: bs.length ? db.select().from(stores).where(and(eq(stores.organizationId, organizationId), inArray(stores.brandId, bs.map(b => b.id)))).all() : [],
           accounts: db.select().from(accounts).where(and(eq(accounts.organizationId, organizationId), eq(accounts.clientId, id))).all(),
+          permissions: access,
         });
       });
     },
     createClient(input: unknown) {
+      permissions.require('master_data.write');
       const value = canonicalDates(createClientSchema.parse(input));
       return db.transaction(() => {
         validateOwner(value.ownerUserId);
@@ -115,6 +133,7 @@ export function masterDataService(db: Database, organizationId: string, userId: 
       });
     },
     updateClient(id: string, input: unknown) {
+      permissions.require('master_data.write');
       const value = canonicalDates(updateClientSchema.parse(input));
       return db.transaction(() => {
         const row = clientSchema.parse({ ...client(id), ...value, updatedAt: new Date().toISOString() });
@@ -125,6 +144,7 @@ export function masterDataService(db: Database, organizationId: string, userId: 
       });
     },
     createBrand(input: unknown) {
+      permissions.require('master_data.write');
       const value = createBrandSchema.parse(input);
       return db.transaction(() => {
         client(value.clientId);
@@ -135,6 +155,7 @@ export function masterDataService(db: Database, organizationId: string, userId: 
       });
     },
     updateBrand(id: string, input: unknown) {
+      permissions.require('master_data.write');
       const value = updateBrandSchema.parse(input);
       return db.transaction(() => {
         const current = brand(id);
@@ -148,6 +169,7 @@ export function masterDataService(db: Database, organizationId: string, userId: 
       });
     },
     createStore(input: unknown) {
+      permissions.require('master_data.write');
       const value = createStoreSchema.parse(input);
       return db.transaction(() => {
         brand(value.brandId);
@@ -158,6 +180,7 @@ export function masterDataService(db: Database, organizationId: string, userId: 
       });
     },
     updateStore(id: string, input: unknown) {
+      permissions.require('master_data.write');
       const value = updateStoreSchema.parse(input);
       return db.transaction(() => {
         const current = store(id);
@@ -172,6 +195,7 @@ export function masterDataService(db: Database, organizationId: string, userId: 
     },
     listAccounts(input: unknown) {
       const query = accountQuerySchema.parse(input);
+      const readableClientIds = permissions.readableClientIds();
       const selectedClient = query.clientId ? client(query.clientId) : null;
       const selectedBrand = query.brandId ? brand(query.brandId) : null;
       const selectedStore = query.storeId ? store(query.storeId) : null;
@@ -185,17 +209,33 @@ export function masterDataService(db: Database, organizationId: string, userId: 
           throw new ApiError(409, 'HIERARCHY_MISMATCH', '所选门店不属于所选客户');
       }
       const predicates = [eq(accounts.organizationId, organizationId)];
+      if (readableClientIds) predicates.push(readableClientIds.length ? inArray(accounts.clientId, readableClientIds) : sql`0 = 1`);
       if (query.clientId) predicates.push(eq(accounts.clientId, query.clientId));
       if (query.brandId) predicates.push(eq(accounts.brandId, query.brandId));
       if (query.storeId) predicates.push(eq(accounts.storeId, query.storeId));
       if (query.status) predicates.push(eq(accounts.status, query.status));
       // Include empty parents so users can progressively create the hierarchy.
-      return db.transaction(() => hierarchySchema.parse({
-        clients: db.select().from(clients).where(eq(clients.organizationId, organizationId)).orderBy(asc(clients.clientName)).all(),
-        brands: db.select().from(brands).where(eq(brands.organizationId, organizationId)).orderBy(asc(brands.brandName)).all(),
-        stores: db.select().from(stores).where(eq(stores.organizationId, organizationId)).orderBy(asc(stores.storeName)).all(),
-        accounts: db.select().from(accounts).where(and(...predicates)).orderBy(asc(accounts.accountName)).all(),
-      }));
+      return db.transaction(() => {
+        const visibleClients = readableClientIds === null
+          ? db.select().from(clients).where(eq(clients.organizationId, organizationId)).orderBy(asc(clients.clientName)).all()
+          : readableClientIds.length
+            ? db.select().from(clients).where(and(eq(clients.organizationId, organizationId), inArray(clients.id, readableClientIds))).orderBy(asc(clients.clientName)).all()
+            : [];
+        const clientIds = visibleClients.map(row => row.id);
+        const visibleBrands = clientIds.length ? db.select().from(brands).where(and(
+          eq(brands.organizationId, organizationId), inArray(brands.clientId, clientIds),
+        )).orderBy(asc(brands.brandName)).all() : [];
+        const brandIds = visibleBrands.map(row => row.id);
+        return hierarchySchema.parse({
+          clients: visibleClients,
+          brands: visibleBrands,
+          stores: brandIds.length ? db.select().from(stores).where(and(
+            eq(stores.organizationId, organizationId), inArray(stores.brandId, brandIds),
+          )).orderBy(asc(stores.storeName)).all() : [],
+          accounts: db.select().from(accounts).where(and(...predicates)).orderBy(asc(accounts.accountName)).all(),
+          permissions: access,
+        });
+      });
     },
     accountDetail(id: string) {
       return db.transaction(() => {
@@ -203,10 +243,12 @@ export function masterDataService(db: Database, organizationId: string, userId: 
         return accountDetailSchema.parse({
           account: row, client: client(row.clientId), brand: brand(row.brandId), store: store(row.storeId),
           contentStats: { total: 0, published: 0, implemented: false },
+          permissions: access,
         });
       });
     },
     createAccount(input: unknown) {
+      permissions.require('master_data.write');
       const value = createAccountSchema.parse(input);
       return db.transaction(() => {
         validateHierarchy(value);
@@ -217,6 +259,7 @@ export function masterDataService(db: Database, organizationId: string, userId: 
       });
     },
     updateAccount(id: string, input: unknown) {
+      permissions.require('master_data.write');
       const value = updateAccountSchema.parse(input);
       return db.transaction(() => {
         const row = accountSchema.parse({ ...account(id), ...value, updatedAt: new Date().toISOString() });

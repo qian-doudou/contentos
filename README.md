@@ -1,6 +1,6 @@
 # ContentOS
 
-ContentOS 是面向本地生活短视频代运营团队的 AI 内容运营与项目管理平台。当前已完成第二阶段业务主数据：在第一阶段 Next.js、SQLite + Drizzle、统一 API、Run 追踪与确定性 LLM Mock 基础上，加入 Organization → Client → Brand → Store → Account 的可持久化业务层级。
+ContentOS 是面向本地生活短视频代运营团队的 AI 内容运营与项目管理平台。当前已完成第三阶段团队与权限：在可持久化的 Organization → Client → Brand → Store → Account 业务层级上，加入统一服务端权限边界、`client_members` 客户授权关系和仅开发环境可用的用户切换器。
 
 ## 本地运行
 
@@ -28,7 +28,17 @@ npm run dev
 
 百炼官方参考：[Base URL 总览](https://help.aliyun.com/zh/model-studio/base-url)、[OpenAI 兼容 Chat](https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-chat-completions)、[文本模型选择](https://help.aliyun.com/zh/model-studio/text-generation-model/)。
 
-本地 MVP 的组织与操作人由服务端环境变量 `LOCAL_ORGANIZATION_ID`、`LOCAL_USER_ID` 固定，HTTP 请求不能通过 header、query 或 body 切换组织。第三阶段接入真实权限模型前，不应将当前本地身份方案用于公网多租户环境。
+本地 MVP 的组织由服务端环境变量 `LOCAL_ORGANIZATION_ID` 固定，HTTP header、query 和 body 不能切换组织。开发环境顶部用户切换器通过 HttpOnly、SameSite Cookie 模拟当前用户；生产环境忽略该 Cookie 并禁用切换 API。这是本地演示身份，不是真实登录，不应直接用于公网多租户环境。
+
+## 角色与权限
+
+- `owner`：当前阶段全部权限，包含演示数据恢复。
+- `admin`：组织与业务主数据管理，不包含危险系统操作。
+- `operator`：只读取 `client_members` 已分配客户的当前主数据；内容、计划等写入权限随对应业务阶段实现。
+- `photographer` / `editor`：当前主数据 API 不授权；本人任务权限随拍摄、剪辑阶段实现。
+- `viewer`：只读取 `client_members` 已授权客户，所有主数据写入均返回 403。
+
+权限通过 `lib/auth/permissions.ts` 统一校验。请求其他组织的 ID 返回 404；请求同组织但未授权的客户返回 403，不用空数组掩盖越权。
 
 ## 页面
 
@@ -37,6 +47,7 @@ npm run dev
 - `/clients/[id]`：客户资料及其品牌、门店、账号层级。
 - `/accounts`：按客户 → 品牌 → 门店 → 账号分组管理。
 - `/accounts/[id]`：账号定位、目标、内容风格、禁用风格及明确标记为未实现的内容统计。
+- `/team`：成员、角色、负责客户数与状态（Owner / Admin 可访问）。
 - 其他导航入口保留后续阶段空状态，不会返回 404。
 
 ## 数据库
@@ -44,7 +55,7 @@ npm run dev
 - 默认数据库：`./data/contentos.db`，可通过 `DATABASE_PATH` 修改。
 - Schema：`db/schema.ts`。
 - Migration：`drizzle/`。
-- Seed：`npm run db:seed`，幂等写入带 `is_demo` 标识的组织、4 位成员和德祥楼业务层级。
+- Seed：`npm run db:seed`，幂等写入带 `is_demo` 标识的组织、5 位可切换成员、客户授权关系和德祥楼业务层级。
 - 恢复演示数据：`npm run db:reset`，或在开发环境调用 `POST /api/dev/reset` 并传入 `{ "confirm": "RESET_DEMO" }`。该操作只恢复固定 demo ID，不物理删除客户、品牌、门店或账号。
 
 所有时间以 ISO 8601 文本保存，所有业务 ID 使用 UUID。核心层级通过包含 `organization_id` 的复合外键约束，服务层所有 ID 查询同时带组织条件。数据库文件被 Git 忽略，进程重启和页面刷新不会清空数据。
@@ -56,6 +67,8 @@ npm run dev
 - `GET /api/health`
 - `GET /api/dashboard`
 - `POST /api/dev/reset`（仅非生产环境）
+- `GET/POST /api/dev/identity`（POST 仅非生产环境）
+- `GET /api/team`
 
 业务主数据接口：
 
@@ -84,7 +97,7 @@ npm run dev
 ## Demo 主数据
 
 - Organization：星火本地生活运营有限公司
-- Users：运营负责人、运营A、摄影A、剪辑A
+- Users：运营负责人、运营A、摄影A、剪辑A、查看者
 - Client / Brand：德祥楼，餐饮 / 铜锅涮羊肉，城市菏泽
 - Store：德祥楼（演示门店）
 - Account：德祥楼老板IP，目标为本地曝光、老板人设、团购转化

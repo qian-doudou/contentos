@@ -8,7 +8,7 @@ let sqlite: Database.Database | undefined;
 afterEach(() => sqlite?.close());
 
 describe('SQLite migration', () => {
-  it('creates every phase-two table with organization scope', () => {
+  it('creates every phase-three table with organization scope', () => {
     sqlite = new Database(':memory:');
     sqlite.pragma('foreign_keys = ON');
     const migrations = readdirSync(resolve('drizzle'))
@@ -20,15 +20,17 @@ describe('SQLite migration', () => {
 
     const tables = sqlite.prepare("select name from sqlite_schema where type = 'table' order by name").all() as Array<{ name: string }>;
     expect(tables.map((row) => row.name)).toEqual([
-      'accounts', 'app_settings', 'audit_logs', 'brands', 'clients', 'organizations', 'run_steps', 'runs', 'stores', 'users',
+      'accounts', 'app_settings', 'audit_logs', 'brands', 'client_members', 'clients', 'organizations', 'run_steps', 'runs', 'stores', 'users',
     ]);
 
-    for (const table of ['accounts', 'app_settings', 'audit_logs', 'brands', 'clients', 'run_steps', 'runs', 'stores', 'users']) {
+    for (const table of ['accounts', 'app_settings', 'audit_logs', 'brands', 'client_members', 'clients', 'run_steps', 'runs', 'stores', 'users']) {
       const columns = sqlite.prepare(`pragma table_info(${table})`).all() as Array<{ name: string }>;
       expect(columns.some((column) => column.name === 'organization_id')).toBe(true);
     }
 
     const accountForeignKeys = sqlite.prepare('pragma foreign_key_list(accounts)').all() as Array<{ id: number }>;
     expect(new Set(accountForeignKeys.map((key) => key.id)).size).toBe(4);
+    const membershipForeignKeys = sqlite.prepare('pragma foreign_key_list(client_members)').all() as Array<{ id: number }>;
+    expect(new Set(membershipForeignKeys.map(key => key.id)).size).toBe(2);
   });
 });

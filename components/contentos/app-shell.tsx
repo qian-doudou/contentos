@@ -8,7 +8,10 @@ import {
   Gauge, Menu, PanelTop, Settings, ShieldCheck, Sparkles, Users,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { NativeSelect } from '@/components/ui/native-select';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
+import { devIdentityDataSchema, roleLabels } from '@/lib/auth/contracts';
+import { fetchData, useApiData } from '@/components/contentos/master-data/common';
 import { cn } from '@/lib/utils';
 
 const navigation = [
@@ -59,6 +62,20 @@ function Navigation({ onNavigate }: { onNavigate?: () => void }) {
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [switching, setSwitching] = useState(false);
+  const identity = useApiData('/api/dev/identity', devIdentityDataSchema);
+  async function switchIdentity(userId: string) {
+    setSwitching(true);
+    try {
+      await fetchData('/api/dev/identity', devIdentityDataSchema, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId }),
+      });
+      window.location.reload();
+    } catch {
+      setSwitching(false);
+      identity.reload();
+    }
+  }
   return (
     <div className="min-h-screen bg-slate-50 text-slate-950">
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col bg-[#101c2c] px-4 py-5 text-slate-300 lg:flex">
@@ -83,8 +100,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </Sheet>
               <div><p className="font-semibold">ContentOS</p><p className="text-xs text-slate-400">AI 内容运营</p></div>
             </div>
-            <div className="hidden text-sm text-slate-500 lg:block">星火本地生活运营有限公司</div>
-            <div className="flex items-center gap-3"><span className="hidden rounded-full border border-slate-200 px-3 py-1.5 text-xs text-slate-500 sm:inline-flex">Phase 02 · 业务主数据</span><span className="grid size-9 place-items-center rounded-full bg-[#101c2c] text-sm font-semibold text-white">运</span></div>
+            <div className="hidden text-sm text-slate-500 lg:block">{identity.data?.organization.name || '正在读取组织…'}</div>
+            <div className="flex items-center gap-3">
+              <span className="hidden rounded-full border border-slate-200 px-3 py-1.5 text-xs text-slate-500 xl:inline-flex">Phase 03 · 团队与权限</span>
+              {identity.loading ? <span className="text-xs text-slate-400">身份加载中…</span> : identity.error ? <Button variant="outline" size="sm" onClick={identity.reload}>身份加载失败</Button> : identity.data && (
+                identity.data.switchingEnabled
+                  ? <NativeSelect aria-label="开发用户切换器" className="w-40" value={identity.data.currentUser.id} disabled={switching} onChange={event => void switchIdentity(event.target.value)}>
+                    {identity.data.users.map(user => <option key={user.id} value={user.id}>{user.name} · {roleLabels[user.role]}</option>)}
+                  </NativeSelect>
+                  : <span className="text-sm font-medium">{identity.data.currentUser.name}</span>
+              )}
+              <span className="grid size-9 shrink-0 place-items-center rounded-full bg-[#101c2c] text-sm font-semibold text-white">{identity.data?.currentUser.name.slice(0, 1) || '运'}</span>
+            </div>
           </div>
         </header>
         <main className="mx-auto max-w-[1440px] p-5 lg:p-8">{children}</main>

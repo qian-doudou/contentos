@@ -15,10 +15,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTr
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { dashboardResponseSchema, type DashboardData, type DashboardRun } from '@/lib/contracts';
-
-const roleLabels = {
-  owner: '运营负责人', operator: '运营', photographer: '摄影', editor: '剪辑',
-} as const;
+import { roleLabels } from '@/lib/auth/contracts';
 
 const runTypeLabels = { production: '生产', test: '测试', eval: '评测' } as const;
 const statusLabels = { pending: '待执行', running: '运行中', succeeded: '已成功', failed: '已失败', cancelled: '已取消' } as const;
@@ -167,7 +164,7 @@ export function Dashboard() {
   return (
     <div className="space-y-6">
       <section className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div><p className="eyebrow">工作台 / 系统总览</p><h1 className="page-title">内容运营控制台</h1><p className="page-description">{data.organization?.name ?? '尚未创建组织'} · 第二阶段业务主数据</p></div>
+        <div><p className="eyebrow">工作台 / 系统总览</p><h1 className="page-title">内容运营控制台</h1><p className="page-description">{data.organization?.name ?? '尚未创建组织'} · 第三阶段团队与权限</p></div>
         <div className="flex flex-wrap items-center gap-2">
           <Badge className="h-7 bg-emerald-100 px-3 text-emerald-700"><CheckCircle2 />SQLite 已连接</Badge>
           <Badge className="h-7 bg-cyan-100 px-3 text-cyan-800"><Bot />千问 {data.system.llmMode === 'mock' ? 'Mock' : 'Live'}</Badge>
@@ -210,7 +207,7 @@ export function Dashboard() {
         </Card>
 
         <Card>
-          <CardHeader className="border-b"><div><p className="section-kicker">组织成员</p><CardTitle className="mt-1 text-xl">演示团队</CardTitle></div><CardAction><Badge variant="outline">{data.users.length} 人</Badge></CardAction></CardHeader>
+          <CardHeader className="border-b"><div><p className="section-kicker">组织成员</p><CardTitle className="mt-1 text-xl">{data.permissions.canReadTeam ? '演示团队' : '当前身份'}</CardTitle></div><CardAction><Badge variant="outline">{data.users.length} 人</Badge></CardAction></CardHeader>
           <CardContent className="px-0">
             {data.users.length === 0 ? <Empty className="min-h-60"><EmptyHeader><EmptyMedia variant="icon"><Users /></EmptyMedia><EmptyTitle>暂无团队成员</EmptyTitle><EmptyDescription>使用演示数据重置恢复基础团队。</EmptyDescription></EmptyHeader></Empty> : (
               <Table><TableHeader><TableRow><TableHead>成员</TableHead><TableHead>角色</TableHead><TableHead className="text-right">状态</TableHead></TableRow></TableHeader><TableBody>{data.users.map((user) => <TableRow key={user.id}><TableCell className="font-medium">{user.name}</TableCell><TableCell className="text-slate-500">{roleLabels[user.role]}</TableCell><TableCell className="text-right"><Badge className="bg-emerald-50 text-emerald-700" variant="secondary">{user.status === 'active' ? '启用' : '停用'}</Badge></TableCell></TableRow>)}</TableBody></Table>
@@ -219,11 +216,11 @@ export function Dashboard() {
         </Card>
       </section>
 
-      <Card className="border-dashed bg-slate-50/70 shadow-none">
+      {data.permissions.canResetDemo && <Card className="border-dashed bg-slate-50/70 shadow-none">
         <CardHeader><CardTitle>本地演示数据</CardTitle><CardDescription>恢复固定 is_demo 主数据；此操作在数据库事务中执行。</CardDescription><CardAction>
           <Dialog><DialogTrigger render={<Button variant="outline" />}><RefreshCw data-icon="inline-start" />恢复演示数据</DialogTrigger><DialogContent><DialogHeader><DialogTitle>确认恢复演示数据？</DialogTitle><DialogDescription>演示组织、成员和德祥楼业务层级将恢复为 seed 定义；非演示业务记录不会删除，本地数据库文件也会保留。</DialogDescription></DialogHeader><DialogFooter><DialogClose render={<Button variant="outline" />}>取消</DialogClose><DialogClose render={<Button variant="destructive" disabled={resetting} onClick={() => void resetDemo()} />}>{resetting ? '恢复中…' : '确认恢复'}</DialogClose></DialogFooter></DialogContent></Dialog>
         </CardAction></CardHeader>
-      </Card>
+      </Card>}
     </div>
   );
 }

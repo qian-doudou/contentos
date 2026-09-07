@@ -18,7 +18,7 @@ export function AccountDetailPage({ id }: { id: string }) {
   const { account, client, brand, store, contentStats } = state.data;
   return <div className="space-y-6">
     <PageHeading title={account.accountName} description={`抖音 · ${accountTypeLabels[account.accountType]} · ${store.city || '城市未填写'}`}>
-      <Button variant="outline" nativeButton={false} render={<Link href="/accounts" />}>品牌与账号</Button><EditorDialog kind="account" initial={account} hierarchy={hierarchy.data} onSaved={() => { setNotice('账号已保存'); state.reload(); hierarchy.reload(); }} />
+      <Button variant="outline" nativeButton={false} render={<Link href="/accounts" />}>品牌与账号</Button>{state.data.permissions.canWrite && <EditorDialog kind="account" initial={account} hierarchy={hierarchy.data} onSaved={() => { setNotice('账号已保存'); state.reload(); hierarchy.reload(); }} />}
     </PageHeading>
     {notice && <output className="block rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</output>}
     <section className="surface-card space-y-5">

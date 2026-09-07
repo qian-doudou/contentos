@@ -32,6 +32,16 @@ export const userSchema = z.object({
   updatedAt: isoDateSchema,
 });
 
+export const clientMemberSchema = z.object({
+  id: uuidSchema,
+  organizationId: uuidSchema,
+  clientId: uuidSchema,
+  userId: uuidSchema,
+  roleOverride: z.enum(userRoles).nullable(),
+  isDemo: z.boolean(),
+  createdAt: isoDateSchema,
+});
+
 export const appSettingSchema = z.object({
   id: uuidSchema,
   organizationId: uuidSchema,
@@ -88,6 +98,6 @@ export const auditLogSchema = z.object({
 
 export type Organization = z.infer<typeof organizationSchema>;
 export type User = z.infer<typeof userSchema>;
+export type ClientMember = z.infer<typeof clientMemberSchema>;
 export type Run = z.infer<typeof runSchema>;
 export type RunStep = z.infer<typeof runStepSchema>;
-

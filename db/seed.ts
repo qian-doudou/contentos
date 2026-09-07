@@ -1,6 +1,6 @@
 import { and, eq } from 'drizzle-orm';
 import { db, sqlite } from './client';
-import { accounts, appSettings, auditLogs, brands, clients, organizations, stores, users } from './schema';
+import { accounts, appSettings, auditLogs, brands, clientMembers, clients, organizations, stores, users } from './schema';
 import { accountSchema, brandSchema, clientSchema, storeSchema, accountDefaults, brandDefaults, clientDefaults, storeDefaults } from '../lib/master-data/contracts';
 
 export const DEMO_IDS = {
@@ -10,10 +10,13 @@ export const DEMO_IDS = {
   photographer: '0198f744-8e18-7ae2-a780-52a0e20c1934',
   editor: '0198f744-8e18-7ae2-a780-52a0e20c1935',
   phaseSetting: '0198f744-8e18-7ae2-a780-52a0e20c1936',
+  viewer: '0198f744-8e18-7ae2-a780-52a0e20c1937',
   client: '0198f744-8e18-7ae2-a780-52a0e20c1941',
   brand: '0198f744-8e18-7ae2-a780-52a0e20c1942',
   store: '0198f744-8e18-7ae2-a780-52a0e20c1943',
   account: '0198f744-8e18-7ae2-a780-52a0e20c1944',
+  operatorMembership: '0198f744-8e18-7ae2-a780-52a0e20c1951',
+  viewerMembership: '0198f744-8e18-7ae2-a780-52a0e20c1952',
 } as const;
 
 const demoUsers = [
@@ -21,6 +24,7 @@ const demoUsers = [
   { id: DEMO_IDS.operator, name: '运营A', role: 'operator' as const },
   { id: DEMO_IDS.photographer, name: '摄影A', role: 'photographer' as const },
   { id: DEMO_IDS.editor, name: '剪辑A', role: 'editor' as const },
+  { id: DEMO_IDS.viewer, name: '查看者', role: 'viewer' as const },
 ];
 
 export function seedDemoData(options: { reset?: boolean } = {}) {
@@ -73,7 +77,7 @@ export function seedDemoData(options: { reset?: boolean } = {}) {
         id: DEMO_IDS.phaseSetting,
         organizationId: DEMO_IDS.organization,
         key: 'product.phase',
-        valueJson: JSON.stringify({ phase: 2, label: '业务主数据' }),
+        valueJson: JSON.stringify({ phase: 3, label: '团队与权限' }),
         isSecret: false,
         isDemo: true,
         createdAt: now,
@@ -81,7 +85,7 @@ export function seedDemoData(options: { reset?: boolean } = {}) {
       })
       .onConflictDoUpdate({
         target: [appSettings.organizationId, appSettings.key],
-        set: { valueJson: JSON.stringify({ phase: 2, label: '业务主数据' }), updatedAt: now },
+        set: { valueJson: JSON.stringify({ phase: 3, label: '团队与权限' }), updatedAt: now },
       })
       .run();
 
@@ -114,6 +118,31 @@ export function seedDemoData(options: { reset?: boolean } = {}) {
       db.insert(brands).values(b).onConflictDoNothing().run();
       db.insert(stores).values(s).onConflictDoNothing().run();
       db.insert(accounts).values(a).onConflictDoNothing().run();
+    }
+
+    for (const membership of [
+      { id: DEMO_IDS.operatorMembership, userId: DEMO_IDS.operator },
+      { id: DEMO_IDS.viewerMembership, userId: DEMO_IDS.viewer },
+    ]) {
+      const row = {
+        ...membership,
+        organizationId: DEMO_IDS.organization,
+        clientId: DEMO_IDS.client,
+        roleOverride: null,
+        isDemo: true,
+        createdAt: now,
+      };
+      db.insert(clientMembers).values(row).onConflictDoUpdate({
+        target: clientMembers.id,
+        set: { roleOverride: null, isDemo: true },
+        setWhere: and(eq(clientMembers.organizationId, DEMO_IDS.organization), eq(clientMembers.isDemo, true)),
+      }).run();
+      const demoMembership = db.select({ id: clientMembers.id }).from(clientMembers).where(and(
+        eq(clientMembers.id, membership.id),
+        eq(clientMembers.organizationId, DEMO_IDS.organization),
+        eq(clientMembers.isDemo, true),
+      )).get();
+      if (!demoMembership) throw new Error(`Demo membership ID ${membership.id} is already owned by another record`);
     }
 
     if (options.reset) {

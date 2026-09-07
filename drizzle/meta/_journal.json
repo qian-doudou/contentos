@@ -22,6 +22,13 @@
       "when": 1788762629798,
       "tag": "0002_blue_white_tiger",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1788766291441,
+      "tag": "0003_wise_sheva_callister",
+      "breakpoints": true
     }
   ]
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { organizationSchema, runSchema, runStepSchema } from '@/db/validation';
+import { clientMemberSchema, organizationSchema, runSchema, runStepSchema, userSchema } from '@/db/validation';
 import { devResetInputSchema } from '@/lib/contracts';
 import { accountSchema, clientSchema } from '@/lib/master-data/contracts';
 
@@ -54,5 +54,14 @@ describe('business schemas', () => {
       platform: 'kuaishou', accountName: '账号', accountType: 'owner_ip', accountGoalJson: [],
       contentStyleJson: [], forbiddenStyleJson: [], followers: 0, status: 'active',
     })).toThrow();
+  });
+
+  it('validates all phase-three roles and client membership overrides', () => {
+    for (const role of ['owner', 'admin', 'operator', 'photographer', 'editor', 'viewer'] as const)
+      expect(userSchema.parse({ ...base, name: role, role, status: 'active', updatedAt: base.createdAt }).role).toBe(role);
+    expect(clientMemberSchema.parse({
+      ...base, clientId: base.id, userId: base.id, roleOverride: 'viewer',
+    }).roleOverride).toBe('viewer');
+    expect(() => clientMemberSchema.parse({ ...base, clientId: base.id, userId: base.id, roleOverride: 'root' })).toThrow();
   });
 });

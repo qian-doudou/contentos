@@ -170,6 +170,22 @@ export const clients = sqliteTable('clients', {
   check('clients_contract_order', sql`${t.contractStart} IS NULL OR ${t.contractEnd} IS NULL OR ${t.contractStart} <= ${t.contractEnd}`),
 ]);
 
+export const clientMembers = sqliteTable('client_members', {
+  id: text('id').primaryKey(),
+  organizationId: text('organization_id').notNull(),
+  clientId: text('client_id').notNull(),
+  userId: text('user_id').notNull(),
+  roleOverride: text('role_override', { enum: userRoles }),
+  isDemo: integer('is_demo', { mode: 'boolean' }).notNull().default(false),
+  createdAt: text('created_at').notNull(),
+}, (t) => [
+  uniqueIndex('uq_client_members_org_client_user').on(t.organizationId, t.clientId, t.userId),
+  index('idx_client_members_org_user').on(t.organizationId, t.userId),
+  foreignKey({ columns: [t.organizationId, t.clientId], foreignColumns: [clients.organizationId, clients.id], name: 'client_members_client_fk' }),
+  foreignKey({ columns: [t.organizationId, t.userId], foreignColumns: [users.organizationId, users.id], name: 'client_members_user_fk' }),
+  check('client_members_role_valid', sql`${t.roleOverride} IS NULL OR ${t.roleOverride} IN ('owner', 'admin', 'operator', 'photographer', 'editor', 'viewer')`),
+]);
+
 export const brands = sqliteTable('brands', {
   ...businessMetadata(),
   clientId: text('client_id').notNull(),
@@ -234,6 +250,7 @@ export const accounts = sqliteTable('accounts', {
 ]);
 
 export type ClientRow = typeof clients.$inferSelect;
+export type ClientMemberRow = typeof clientMembers.$inferSelect;
 export type BrandRow = typeof brands.$inferSelect;
 export type StoreRow = typeof stores.$inferSelect;
 export type AccountRow = typeof accounts.$inferSelect;

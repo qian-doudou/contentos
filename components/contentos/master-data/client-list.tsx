@@ -32,7 +32,7 @@ export function ClientListPage() {
   }
   return <div className="space-y-6">
     <PageHeading title="客户" description="合作档案、内容目标与品牌资产，一处管理。">
-      <Button nativeButton={false} render={<Link href="/clients/new" />} size="lg"><Plus />新建客户</Button>
+      {data?.permissions.canWrite && <Button nativeButton={false} render={<Link href="/clients/new" />} size="lg"><Plus />新建客户</Button>}
     </PageHeading>
     {state.loading ? <LoadingData /> : state.error ? <ErrorData error={state.error} retry={state.reload} /> : data && <>
       <form key={query} onSubmit={applyFilters} className="surface-card grid items-end gap-3 sm:grid-cols-2 xl:grid-cols-[2fr_1fr_1fr_1fr_auto_auto]">

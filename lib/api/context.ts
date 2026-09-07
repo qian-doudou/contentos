@@ -1,15 +1,37 @@
 import { db } from '@/db/client';
+import { permissionService } from '@/lib/auth/permissions';
 import { masterDataService } from '@/lib/master-data/service';
+import { z } from 'zod';
 
-// Local MVP identity is server-owned. Stage 03 will replace this with a verified session.
-// No request header, cookie, query or body may select the organization/user.
-export function localContextIds() {
+export const DEV_USER_COOKIE = 'contentos_dev_user_id';
+type LocalIdentityEnvironment = {
+  NODE_ENV?: string;
+  LOCAL_ORGANIZATION_ID?: string;
+  LOCAL_USER_ID?: string;
+};
+
+function cookieValue(request: Request | undefined, name: string) {
+  if (!request) return undefined;
+  const item = request.headers.get('cookie')?.split(';').map(value => value.trim()).find(value => value.startsWith(`${name}=`));
+  if (!item) return undefined;
+  try { return decodeURIComponent(item.slice(name.length + 1)); } catch { return undefined; }
+}
+
+// The organization remains server-owned. Only a non-production, HttpOnly cookie may
+// select a user, and every service still verifies that user inside the organization.
+export function localContextIds(request?: Request, environment: LocalIdentityEnvironment = process.env) {
+  const configuredUserId = environment.LOCAL_USER_ID || '0198f744-8e18-7ae2-a780-52a0e20c1932';
+  const cookieUserId = environment.NODE_ENV === 'production' ? undefined : cookieValue(request, DEV_USER_COOKIE);
   return {
-    organizationId: process.env.LOCAL_ORGANIZATION_ID || '0198f744-8e18-7ae2-a780-52a0e20c1931',
-    userId: process.env.LOCAL_USER_ID || '0198f744-8e18-7ae2-a780-52a0e20c1932',
+    organizationId: environment.LOCAL_ORGANIZATION_ID || '0198f744-8e18-7ae2-a780-52a0e20c1931',
+    userId: z.uuid().safeParse(cookieUserId).success ? cookieUserId! : configuredUserId,
   };
 }
-export function currentMasterData() {
-  const { organizationId, userId } = localContextIds();
+export function currentPermissions(request?: Request) {
+  const { organizationId, userId } = localContextIds(request);
+  return permissionService(db, organizationId, userId);
+}
+export function currentMasterData(request?: Request) {
+  const { organizationId, userId } = localContextIds(request);
   return masterDataService(db, organizationId, userId);
 }

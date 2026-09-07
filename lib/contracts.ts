@@ -22,6 +22,7 @@ export const dashboardDataSchema = z.object({
     llmMode: z.enum(['mock', 'live']),
     phase: z.number().int().positive(),
   }),
+  permissions: z.object({ canResetDemo: z.boolean(), canReadTeam: z.boolean() }),
   generatedAt: z.iso.datetime({ offset: true }),
 });
 
@@ -42,4 +43,3 @@ export const devResetDataSchema = z.object({
 
 export type DashboardData = z.infer<typeof dashboardDataSchema>;
 export type DashboardRun = DashboardData['recentRuns'][number];
-

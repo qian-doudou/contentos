@@ -71,20 +71,23 @@ export const clientQuerySchema = z.object({
 export const accountQuerySchema = z.object({
   clientId: z.uuid().optional(), brandId: z.uuid().optional(), storeId: z.uuid().optional(), status: status.optional(),
 }).strict();
+export const masterDataPermissionsSchema = z.object({ canWrite: z.boolean() });
 export const clientDetailSchema = z.object({
   client: clientSchema, owner: userSchema.nullable(), brands: z.array(brandSchema), stores: z.array(storeSchema),
-  accounts: z.array(accountSchema),
+  accounts: z.array(accountSchema), permissions: masterDataPermissionsSchema,
 });
 export const clientListSchema = z.object({
   items: z.array(clientSchema), total: z.number(), page: z.number(), pageSize: z.number(),
-  filters: z.object({ industries: z.array(z.string()), owners: z.array(userSchema) }),
+  filters: z.object({ industries: z.array(z.string()), owners: z.array(userSchema) }), permissions: masterDataPermissionsSchema,
 });
 export const hierarchySchema = z.object({
   clients: z.array(clientSchema), brands: z.array(brandSchema), stores: z.array(storeSchema), accounts: z.array(accountSchema),
+  permissions: masterDataPermissionsSchema,
 });
 export const accountDetailSchema = z.object({
   account: accountSchema, client: clientSchema, brand: brandSchema, store: storeSchema,
   contentStats: z.object({ total: z.literal(0), published: z.literal(0), implemented: z.literal(false) }),
+  permissions: masterDataPermissionsSchema,
 });
 export type Client = z.infer<typeof clientSchema>;
 export type Brand = z.infer<typeof brandSchema>;
