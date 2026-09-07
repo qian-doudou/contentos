@@ -51,11 +51,11 @@ export function SectionPage({ config }: { config: SectionConfig }) {
 
       {isContents ? <EmptyKanban /> : (
         <Card className="min-h-[420px]">
-          <CardHeader className="border-b"><div><p className="section-kicker">Phase 01</p><CardTitle className="mt-1 text-xl">{config.entity}</CardTitle><CardDescription className="mt-1">当前阶段仅保留统一入口、状态与数据边界。</CardDescription></div><Badge variant="outline">0 条记录</Badge></CardHeader>
+          <CardHeader className="border-b"><div><p className="section-kicker">后续阶段</p><CardTitle className="mt-1 text-xl">{config.entity}</CardTitle><CardDescription className="mt-1">当前阶段仅保留统一入口、状态与数据边界。</CardDescription></div><Badge variant="outline">0 条记录</Badge></CardHeader>
           <CardContent className="flex min-h-80 items-center justify-center">
             <Empty className="max-w-xl border border-dashed border-slate-200 bg-slate-50/70">
               <EmptyHeader><EmptyMedia variant="icon">{config.slug === 'ai' ? <Sparkles /> : <Layers3 />}</EmptyMedia><EmptyTitle>{config.entity}暂无数据</EmptyTitle><EmptyDescription>该模块不在第一阶段实现范围内。后续接入时将沿用 organization_id、多租户数据隔离与统一 Run 追踪。</EmptyDescription></EmptyHeader>
-              <Button variant="outline" render={<Link href="/" />}>返回工作台<ArrowRight data-icon="inline-end" /></Button>
+              <Button variant="outline" nativeButton={false} render={<Link href="/" />}>返回工作台<ArrowRight data-icon="inline-end" /></Button>
             </Empty>
           </CardContent>
         </Card>
@@ -63,4 +63,3 @@ export function SectionPage({ config }: { config: SectionConfig }) {
     </div>
   );
 }
-

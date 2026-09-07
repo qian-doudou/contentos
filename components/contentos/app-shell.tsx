@@ -84,7 +84,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <div><p className="font-semibold">ContentOS</p><p className="text-xs text-slate-400">AI 内容运营</p></div>
             </div>
             <div className="hidden text-sm text-slate-500 lg:block">星火本地生活运营有限公司</div>
-            <div className="flex items-center gap-3"><span className="hidden rounded-full border border-slate-200 px-3 py-1.5 text-xs text-slate-500 sm:inline-flex">Phase 01 · 工程基础</span><span className="grid size-9 place-items-center rounded-full bg-[#101c2c] text-sm font-semibold text-white">运</span></div>
+            <div className="flex items-center gap-3"><span className="hidden rounded-full border border-slate-200 px-3 py-1.5 text-xs text-slate-500 sm:inline-flex">Phase 02 · 业务主数据</span><span className="grid size-9 place-items-center rounded-full bg-[#101c2c] text-sm font-semibold text-white">运</span></div>
           </div>
         </header>
         <main className="mx-auto max-w-[1440px] p-5 lg:p-8">{children}</main>
@@ -92,4 +92,3 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     </div>
   );
 }
-

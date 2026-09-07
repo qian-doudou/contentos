@@ -1,6 +1,6 @@
 # ContentOS
 
-ContentOS 是面向本地生活短视频代运营团队的 AI 内容运营与项目管理平台。本仓库实现第一阶段工程基础：Next.js App Router、SQLite + Drizzle、统一 API、Run/Run Step 数据模型、确定性 LLM Mock 模式和完整后台导航。
+ContentOS 是面向本地生活短视频代运营团队的 AI 内容运营与项目管理平台。当前已完成第二阶段业务主数据：在第一阶段 Next.js、SQLite + Drizzle、统一 API、Run 追踪与确定性 LLM Mock 基础上，加入 Organization → Client → Brand → Store → Account 的可持久化业务层级。
 
 ## 本地运行
 
@@ -16,23 +16,47 @@ npm run dev
 
 打开 `http://localhost:3000`。未配置 `LLM_API_KEY` 时，LLM 客户端自动使用确定性 Mock 响应，核心演示路径无需外部服务。
 
+本地 MVP 的组织与操作人由服务端环境变量 `LOCAL_ORGANIZATION_ID`、`LOCAL_USER_ID` 固定，HTTP 请求不能通过 header、query 或 body 切换组织。第三阶段接入真实权限模型前，不应将当前本地身份方案用于公网多租户环境。
+
+## 页面
+
+- `/clients`：按名称、行业、负责人、合作状态筛选和分页。
+- `/clients/new`：创建客户。
+- `/clients/[id]`：客户资料及其品牌、门店、账号层级。
+- `/accounts`：按客户 → 品牌 → 门店 → 账号分组管理。
+- `/accounts/[id]`：账号定位、目标、内容风格、禁用风格及明确标记为未实现的内容统计。
+- 其他导航入口保留后续阶段空状态，不会返回 404。
+
 ## 数据库
 
 - 默认数据库：`./data/contentos.db`，可通过 `DATABASE_PATH` 修改。
 - Schema：`db/schema.ts`。
 - Migration：`drizzle/`。
-- Seed：`npm run db:seed`，幂等写入清晰标记为 `is_demo` 的组织、4 位成员和阶段设置。
-- 完整重置：`npm run db:reset`，或在开发环境调用 `POST /api/dev/reset` 并传入 `{ "confirm": "RESET_DEMO" }`。
+- Seed：`npm run db:seed`，幂等写入带 `is_demo` 标识的组织、4 位成员和德祥楼业务层级。
+- 恢复演示数据：`npm run db:reset`，或在开发环境调用 `POST /api/dev/reset` 并传入 `{ "confirm": "RESET_DEMO" }`。该操作只恢复固定 demo ID，不物理删除客户、品牌、门店或账号。
 
-所有时间以 ISO 8601 文本保存，所有业务 ID 使用 UUID。数据库文件被 Git 忽略，进程重启和页面刷新不会清空数据。
+所有时间以 ISO 8601 文本保存，所有业务 ID 使用 UUID。核心层级通过包含 `organization_id` 的复合外键约束，服务层所有 ID 查询同时带组织条件。数据库文件被 Git 忽略，进程重启和页面刷新不会清空数据。
 
 ## API 规范
+
+基础接口：
 
 - `GET /api/health`
 - `GET /api/dashboard`
 - `POST /api/dev/reset`（仅非生产环境）
 
-统一返回：
+业务主数据接口：
+
+- `GET/POST /api/clients`
+- `GET/PUT /api/clients/[id]`
+- `POST/PUT /api/brands`（品牌更新在 JSON body 传 `id`）
+- `POST/PUT /api/stores`（门店更新在 JSON body 传 `id`）
+- `GET/POST /api/accounts`
+- `GET/PUT /api/accounts/[id]`
+
+`GET /api/clients` 支持 `search`、`industry`、`ownerUserId`、`cooperationStatus`、`status`、`page`、`pageSize`。核心业务对象不提供物理删除 API，停用请更新为 `status=inactive`。
+
+所有接口统一返回：
 
 ```json
 {
@@ -43,7 +67,15 @@ npm run dev
 }
 ```
 
-失败响应使用正确 HTTP 状态码，并返回 `error.code` 与 `error.message`。密钥与完整环境变量不会进入 API 响应。
+失败响应使用正确 HTTP 状态码，包含 `error.code`、`error.message` 与同一个 `request_id` 响应头。API 不返回密钥或完整环境变量。
+
+## Demo 主数据
+
+- Organization：星火本地生活运营有限公司
+- Users：运营负责人、运营A、摄影A、剪辑A
+- Client / Brand：德祥楼，餐饮 / 铜锅涮羊肉，城市菏泽
+- Store：德祥楼（演示门店）
+- Account：德祥楼老板IP，目标为本地曝光、老板人设、团购转化
 
 ## 质量检查
 
@@ -54,7 +86,6 @@ npm test
 npm run build
 ```
 
-## 第一阶段边界
+## 当前边界
 
-当前未接入真实 OAuth、抖音 API、自动发布、GMV、支付、视频生成、自动剪辑、数字人或企业生产数据。导航中的后续模块均显示明确空状态，不代表对应业务能力已经完成。
-
+当前未接入真实 OAuth、抖音 API、自动发布、GMV、支付、视频生成、自动剪辑、数字人或企业生产数据。账号内容统计明确返回 0 与 `implemented=false`，不代表后续业务能力已经完成。

@@ -4,4 +4,6 @@ export const userStatuses = ['active', 'inactive'] as const;
 export const runTypes = ['production', 'test', 'eval'] as const;
 export const runStatuses = ['pending', 'running', 'succeeded', 'failed', 'cancelled'] as const;
 export const runStepStatuses = ['pending', 'running', 'succeeded', 'failed', 'skipped'] as const;
-
+export const cooperationStatuses = ['lead', 'active', 'paused', 'ended'] as const;
+export const accountTypes = ['official', 'owner_ip', 'employee_ip', 'store', 'other'] as const;
+export const businessStatuses = ['active', 'inactive'] as const;

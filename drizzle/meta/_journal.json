@@ -8,6 +8,20 @@
       "when": 1788749372135,
       "tag": "0000_aromatic_robbie_robertson",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1788750637828,
+      "tag": "0001_cheerful_owl",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1788762629798,
+      "tag": "0002_blue_white_tiger",
+      "breakpoints": true
     }
   ]
 }

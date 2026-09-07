@@ -16,7 +16,7 @@ const sections = {
 } satisfies Record<string, SectionConfig>;
 
 export function generateStaticParams() {
-  return Object.keys(sections).map((section) => ({ section }));
+  return Object.keys(sections).filter(section => !['clients', 'accounts'].includes(section)).map((section) => ({ section }));
 }
 
 export default async function Page({ params }: { params: Promise<{ section: string }> }) {
@@ -25,4 +25,3 @@ export default async function Page({ params }: { params: Promise<{ section: stri
   if (!config) notFound();
   return <SectionPage config={config} />;
 }
-

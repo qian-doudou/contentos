@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX `uq_accounts_org_id` ON `accounts` (`organization_id`,`id`);

@@ -1,6 +1,8 @@
 import { seedDemoData } from '@/db/seed';
 import { fail, ok, requestId, ApiError } from '@/lib/api/envelope';
 import { devResetInputSchema } from '@/lib/contracts';
+import { currentMasterData } from '@/lib/api/context';
+import { DEMO_IDS } from '@/db/seed';
 
 export const runtime = 'nodejs';
 
@@ -19,6 +21,14 @@ export async function POST(request: Request) {
     const body = devResetInputSchema.parse(input);
     if (body.confirm !== 'RESET_DEMO') {
       throw new ApiError(400, 'RESET_CONFIRMATION_REQUIRED', '需要明确的重置确认');
+    }
+    const organization = currentMasterData().organization;
+    if (organization.id !== DEMO_IDS.organization || !organization.isDemo) {
+      throw new ApiError(403, 'DEMO_ORGANIZATION_REQUIRED', '仅演示组织可恢复演示数据');
+    }
+    const origin = request.headers.get('origin');
+    if (origin && origin !== new URL(request.url).origin) {
+      throw new ApiError(403, 'ORIGIN_FORBIDDEN', '不允许跨站写入');
     }
     return ok(seedDemoData({ reset: true }), id);
   } catch (error) {

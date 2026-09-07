@@ -32,7 +32,7 @@ export function requestId() {
 export function ok<T>(data: T, id = requestId(), status = 200) {
   return Response.json(
     { success: true, data, error: null, request_id: id } satisfies ApiEnvelope<T>,
-    { status },
+    { status, headers: { 'Cache-Control': 'no-store', 'X-Request-Id': id } },
   );
 }
 
@@ -45,7 +45,7 @@ export function fail(error: unknown, id = requestId()) {
         error: { code: error.code, message: error.message, details: error.details },
         request_id: id,
       } satisfies ApiEnvelope<never>,
-      { status: error.status },
+      { status: error.status, headers: { 'Cache-Control': 'no-store', 'X-Request-Id': id } },
     );
   }
 
@@ -57,7 +57,7 @@ export function fail(error: unknown, id = requestId()) {
         error: { code: 'VALIDATION_ERROR', message: '请求参数校验失败', details: error.issues },
         request_id: id,
       } satisfies ApiEnvelope<never>,
-      { status: 400 },
+      { status: 400, headers: { 'Cache-Control': 'no-store', 'X-Request-Id': id } },
     );
   }
 
@@ -69,7 +69,6 @@ export function fail(error: unknown, id = requestId()) {
       error: { code: 'INTERNAL_ERROR', message: '服务器内部错误' },
       request_id: id,
     } satisfies ApiEnvelope<never>,
-    { status: 500 },
+    { status: 500, headers: { 'Cache-Control': 'no-store', 'X-Request-Id': id } },
   );
 }
-
