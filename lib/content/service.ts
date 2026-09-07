@@ -7,10 +7,12 @@ import { permissionService } from '@/lib/auth/permissions';
 import { ApiError } from '@/lib/api/envelope';
 import {
   accountOptionSchema, contentDetailSchema, contentListItemSchema, contentListSchema, contentOptionsSchema,
-  contentQuerySchema, contentSchema, createContentSchema, createMonthlyPlanSchema, monthlyPlanDetailSchema,
+  contentHistorySchema, contentQuerySchema, contentSchema, contentStatusHistoryItemSchema, contentStatusLogSchema,
+  contentTransitionResultSchema, createContentSchema, createMonthlyPlanSchema, monthlyPlanDetailSchema,
   monthlyPlanListItemSchema, monthlyPlanListSchema, monthlyPlanSchema, operatorOptionSchema, planOptionSchema,
-  planQuerySchema, updateContentSchema, updateMonthlyPlanSchema,
+  planQuerySchema, transitionContentInputSchema, updateContentSchema, updateMonthlyPlanSchema,
 } from './contracts';
+import { assertContentTransition, deadlineFlags } from './workflow';
 
 type Database = BetterSQLite3Database<typeof tables>;
 const missing = () => new ApiError(404, 'NOT_FOUND', '记录不存在或不属于当前组织');
@@ -40,15 +42,21 @@ export function calculateMixStats(
   ];
 }
 
-export function contentService(db: Database, organizationId: string, userId: string) {
+export function contentService(
+  db: Database,
+  organizationId: string,
+  userId: string,
+  runtime: { now?: () => Date } = {},
+) {
   const permissions = permissionService(db, organizationId, userId);
+  const now = runtime.now ?? (() => new Date());
   const audit = (entityType: string, entityId: string, action: string) => db.insert(tables.auditLogs).values({
     id: crypto.randomUUID(), organizationId, userId, entityType, entityId, action,
-    metadataJson: JSON.stringify({ source: 'content_model' }), isDemo: false, createdAt: new Date().toISOString(),
+    metadataJson: JSON.stringify({ source: 'content_model' }), isDemo: false, createdAt: now().toISOString(),
   }).run();
   const metadata = () => {
-    const now = new Date().toISOString();
-    return { id: crypto.randomUUID(), organizationId, isDemo: false, createdAt: now, updatedAt: now };
+    const timestamp = now().toISOString();
+    return { id: crypto.randomUUID(), organizationId, isDemo: false, createdAt: timestamp, updatedAt: timestamp };
   };
   const account = (id: string, authorize = true) => {
     const row = db.select().from(tables.accounts).where(and(
@@ -184,7 +192,15 @@ export function contentService(db: Database, organizationId: string, userId: str
       ...row, accountName: accountItem.accountName, clientName: accountItem.clientName,
       brandName: accountItem.brandName, storeName: accountItem.storeName, operatorName,
       planYear: planItem?.year ?? null, planMonth: planItem?.month ?? null,
+      ...deadlineFlags(row.deadline, row.status, now()),
     });
+  };
+  const enrichStatusLog = (row: z.infer<typeof contentStatusLogSchema>) => {
+    const operatorName = db.select({ name: tables.users.name }).from(tables.users).where(and(
+      eq(tables.users.organizationId, organizationId), eq(tables.users.id, row.operatorId),
+    )).get()?.name;
+    if (!operatorName) throw missing();
+    return contentStatusHistoryItemSchema.parse({ ...row, operatorName });
   };
   const canonicalDates = <T extends { plannedPublishDate?: string | null; deadline?: string | null }>(value: T): T => ({
     ...value,
@@ -334,6 +350,7 @@ export function contentService(db: Database, organizationId: string, userId: str
         const row = contentSchema.parse({
           ...value,
           ...metadata(),
+          status: 'IDEA',
           clientId: targetAccount.clientId,
           brandId: targetAccount.brandId,
           storeId: targetAccount.storeId,
@@ -369,13 +386,57 @@ export function contentService(db: Database, organizationId: string, userId: str
           storeId: targetAccount.storeId,
           monthlyPlanId,
           operatorId,
-          updatedAt: new Date().toISOString(),
+          updatedAt: now().toISOString(),
         });
         db.update(tables.contents).set(row).where(and(
           eq(tables.contents.organizationId, organizationId), eq(tables.contents.id, id),
         )).run();
         audit('content', row.id, 'content.updated');
         return row;
+      });
+    },
+    transitionContent(id: string, input: unknown) {
+      const value = transitionContentInputSchema.parse(input);
+      return db.transaction(() => {
+        const current = content(id);
+        permissions.requireClientWrite(current.clientId);
+        assertContentTransition(current.status, value.newStatus, 'manual');
+        const timestamp = now().toISOString();
+        const update = db.update(tables.contents).set({ status: value.newStatus, updatedAt: timestamp }).where(and(
+          eq(tables.contents.organizationId, organizationId),
+          eq(tables.contents.id, current.id),
+          eq(tables.contents.status, current.status),
+        )).run();
+        if (update.changes !== 1)
+          throw new ApiError(409, 'STALE_CONTENT_STATUS', '内容状态已变更，请刷新后重试');
+        const log = contentStatusLogSchema.parse({
+          id: crypto.randomUUID(), organizationId, contentId: current.id,
+          previousStatus: current.status, newStatus: value.newStatus, triggerType: 'manual', triggerId: null,
+          operatorId: userId, reason: value.reason, isDemo: current.isDemo, createdAt: timestamp,
+        });
+        db.insert(tables.contentStatusLogs).values(log).run();
+        audit('content', current.id, 'content.status_transitioned');
+        const updated = contentSchema.parse({ ...current, status: value.newStatus, updatedAt: timestamp });
+        return contentTransitionResultSchema.parse({
+          content: enrichContent(updated, contentOptions()),
+          log: enrichStatusLog(log),
+        });
+      });
+    },
+    contentHistory(id: string) {
+      return db.transaction(() => {
+        const current = content(id);
+        const items = db.select().from(tables.contentStatusLogs).where(and(
+          eq(tables.contentStatusLogs.organizationId, organizationId),
+          eq(tables.contentStatusLogs.contentId, current.id),
+        )).orderBy(desc(tables.contentStatusLogs.createdAt), desc(sql`rowid`)).all()
+          .map(row => enrichStatusLog(contentStatusLogSchema.parse(row)));
+        return contentHistorySchema.parse({
+          contentId: current.id,
+          currentStatus: current.status,
+          items,
+          permissions: { canWrite: permissions.canWriteClient(current.clientId) },
+        });
       });
     },
   };

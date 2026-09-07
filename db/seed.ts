@@ -82,7 +82,7 @@ export function seedDemoData(options: { reset?: boolean } = {}) {
         id: DEMO_IDS.phaseSetting,
         organizationId: DEMO_IDS.organization,
         key: 'product.phase',
-        valueJson: JSON.stringify({ phase: 4, label: '内容模型' }),
+        valueJson: JSON.stringify({ phase: 5, label: '内容工作流' }),
         isSecret: false,
         isDemo: true,
         createdAt: now,
@@ -90,7 +90,7 @@ export function seedDemoData(options: { reset?: boolean } = {}) {
       })
       .onConflictDoUpdate({
         target: [appSettings.organizationId, appSettings.key],
-        set: { valueJson: JSON.stringify({ phase: 4, label: '内容模型' }), updatedAt: now },
+        set: { valueJson: JSON.stringify({ phase: 5, label: '内容工作流' }), updatedAt: now },
       })
       .run();
 
@@ -187,7 +187,7 @@ export function seedDemoData(options: { reset?: boolean } = {}) {
       ctaType: '到店团购',
       localElement: '菏泽本地口音与鲁西南饮食习惯',
       peopleJson: ['老板'],
-      status: 'active',
+      status: 'IDEA',
       priority: 'high',
       operatorId: DEMO_IDS.operator,
       plannedPublishDate: '2026-09-15T00:00:00.000Z',
@@ -203,12 +203,16 @@ export function seedDemoData(options: { reset?: boolean } = {}) {
       updatedAt: now,
     });
     if (options.reset) {
+      const existingDemoContent = db.select({ status: contents.status }).from(contents).where(and(
+        eq(contents.id, content.id), eq(contents.organizationId, content.organizationId), eq(contents.isDemo, true),
+      )).get();
+      const resetContent = existingDemoContent ? { ...content, status: existingDemoContent.status } : content;
       db.insert(monthlyPlans).values(plan).onConflictDoUpdate({
         target: monthlyPlans.id, set: plan,
         setWhere: and(eq(monthlyPlans.organizationId, plan.organizationId), eq(monthlyPlans.isDemo, true)),
       }).run();
-      db.insert(contents).values(content).onConflictDoUpdate({
-        target: contents.id, set: content,
+      db.insert(contents).values(resetContent).onConflictDoUpdate({
+        target: contents.id, set: resetContent,
         setWhere: and(eq(contents.organizationId, content.organizationId), eq(contents.isDemo, true)),
       }).run();
     } else {

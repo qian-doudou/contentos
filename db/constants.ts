@@ -11,3 +11,8 @@ export const contentTypes = ['persona', 'product', 'local', 'trust', 'conversion
 export const contentGoals = ['exposure', 'followers', 'trust', 'click', 'conversion', 'gmv'] as const;
 export const hookTypes = ['contrast', 'conflict', 'price', 'question', 'identity', 'local', 'result', 'mistake', 'secret', 'challenge', 'other'] as const;
 export const contentPriorities = ['low', 'normal', 'high', 'urgent'] as const;
+export const contentStatuses = [
+  'IDEA', 'SCRIPTING', 'WAITING_APPROVAL', 'APPROVED', 'WAITING_SHOOT', 'SHOT', 'EDITING',
+  'WAITING_REVIEW', 'REVISION', 'READY_TO_PUBLISH', 'PUBLISHED', 'REVIEWED',
+] as const;
+export const contentStatusTriggers = ['manual', 'shoot', 'publish', 'system'] as const;

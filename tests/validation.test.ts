@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { clientMemberSchema, organizationSchema, runSchema, runStepSchema, userSchema } from '@/db/validation';
 import { devResetInputSchema } from '@/lib/contracts';
 import { accountSchema, clientSchema } from '@/lib/master-data/contracts';
-import { createContentSchema, createMonthlyPlanSchema } from '@/lib/content/contracts';
+import {
+  createContentSchema, createMonthlyPlanSchema, transitionContentInputSchema, updateContentSchema,
+} from '@/lib/content/contracts';
 
 const base = {
   id: '0198f744-8e18-7ae2-a780-52a0e20c1931',
@@ -93,5 +95,12 @@ describe('business schemas', () => {
     expect(() => createContentSchema.parse({ ...valid, hookType: 'viral' })).toThrow();
     expect(() => createContentSchema.parse({ ...valid, priority: 'critical' })).toThrow();
     expect(() => createContentSchema.parse({ ...valid, script: '不允许写入主表' })).toThrow();
+    expect(() => createContentSchema.parse({ ...valid, status: 'SCRIPTING' })).toThrow();
+    expect(() => updateContentSchema.parse({ status: 'SCRIPTING' })).toThrow();
+    expect(transitionContentInputSchema.parse({ newStatus: 'SCRIPTING', reason: '开始编写脚本' })).toEqual({
+      newStatus: 'SCRIPTING', reason: '开始编写脚本',
+    });
+    expect(() => transitionContentInputSchema.parse({ newStatus: 'DONE', reason: '跳过流程' })).toThrow();
+    expect(() => transitionContentInputSchema.parse({ newStatus: 'SCRIPTING', reason: '' })).toThrow();
   });
 });

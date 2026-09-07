@@ -36,6 +36,13 @@
       "when": 1788768932750,
       "tag": "0004_omniscient_goblin_queen",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1788793988017,
+      "tag": "0005_chunky_supreme_intelligence",
+      "breakpoints": true
     }
   ]
 }

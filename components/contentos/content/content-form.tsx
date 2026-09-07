@@ -70,7 +70,6 @@ export function ContentForm({ options, initial, defaults, onSaved }: Props) {
         ctaType: textValue(form.get('ctaType')).trim(),
         localElement: textValue(form.get('localElement')).trim(),
         peopleJson: listValue(form.get('peopleJson')),
-        status: textValue(form.get('status')),
         priority: textValue(form.get('priority')),
         operatorId,
         plannedPublishDate: dateValue(form.get('plannedPublishDate')),
@@ -95,7 +94,6 @@ export function ContentForm({ options, initial, defaults, onSaved }: Props) {
         <label htmlFor="content-type" className="space-y-1.5 text-sm">内容类型<NativeSelect id="content-type" className="w-full" name="contentType" defaultValue={initial?.contentType || 'persona'}>{contentTypes.map(value => <option key={value} value={value}>{contentTypeLabels[value]}</option>)}</NativeSelect></label>
         <label htmlFor="content-goal" className="space-y-1.5 text-sm">内容目标<NativeSelect id="content-goal" className="w-full" name="contentGoal" defaultValue={initial?.contentGoal || 'exposure'}>{contentGoals.map(value => <option key={value} value={value}>{contentGoalLabels[value]}</option>)}</NativeSelect></label>
         <label htmlFor="content-priority" className="space-y-1.5 text-sm">优先级<NativeSelect id="content-priority" className="w-full" name="priority" defaultValue={initial?.priority || 'normal'}>{contentPriorities.map(value => <option key={value} value={value}>{priorityLabels[value]}</option>)}</NativeSelect></label>
-        <label htmlFor="content-status" className="space-y-1.5 text-sm">状态<NativeSelect id="content-status" className="w-full" name="status" defaultValue={initial?.status || 'active'}><option value="active">启用</option><option value="inactive">停用</option></NativeSelect></label>
         <label htmlFor="content-publish-date" className="space-y-1.5 text-sm">计划发布日<Input id="content-publish-date" name="plannedPublishDate" type="date" defaultValue={initial?.plannedPublishDate?.slice(0, 10) || ''} /></label>
         <label htmlFor="content-deadline" className="space-y-1.5 text-sm">截止日期<Input id="content-deadline" name="deadline" type="date" defaultValue={initial?.deadline?.slice(0, 10) || ''} /></label>
       </div></section>

@@ -1,6 +1,6 @@
 # ContentOS
 
-ContentOS 是面向本地生活短视频代运营团队的 AI 内容运营与项目管理平台。当前已完成第四阶段内容模型：在可持久化的 Organization → Client → Brand → Store → Account 业务层级上，加入月度内容计划、结构化内容主表、统一服务端权限边界和按账号计算的目标/实际统计。脚本正文不写入 `contents`，留给后续版本表承载。
+ContentOS 是面向本地生活短视频代运营团队的 AI 内容运营与项目管理平台。当前已完成第五阶段内容工作流：在 Organization → Client → Brand → Store → Account → Monthly Plan → Content 业务链路上，加入确定性状态机、事务化状态日志、七列 Kanban 和截止日期标记。本阶段不调用 LLM。
 
 ## 本地运行
 
@@ -48,7 +48,8 @@ npm run dev
 - `/accounts`：按客户 → 品牌 → 门店 → 账号分组管理。
 - `/accounts/[id]`：账号定位、目标、内容风格、禁用风格及明确标记为未实现的内容统计。
 - `/contents/plans`、`/contents/plans/new`、`/contents/plans/[id]`：月度计划查询、创建、编辑和类型目标/实际统计。
-- `/contents`、`/contents/new`、`/contents/[id]`：结构化内容查询、创建、编辑和详情。
+- `/contents`：结构化内容筛选、表格与七列 Kanban；拖拽失败时回滚界面状态。
+- `/contents/new`、`/contents/[id]`：内容创建、编辑、合法状态转换和状态时间线。
 - `/team`：成员、角色、负责客户数与状态（Owner / Admin 可访问）。
 - 其他导航入口保留后续阶段空状态，不会返回 404。
 
@@ -58,7 +59,7 @@ npm run dev
 - Schema：`db/schema.ts`。
 - Migration：`drizzle/`。
 - Seed：`npm run db:seed`，幂等写入带 `is_demo` 标识的组织、5 位可切换成员、客户授权关系、德祥楼业务层级、2026 年 9 月计划和 1 条结构化内容。
-- 恢复演示数据：`npm run db:reset`，或在开发环境调用 `POST /api/dev/reset` 并传入 `{ "confirm": "RESET_DEMO" }`。该操作只恢复固定 demo ID，不物理删除客户、品牌、门店或账号。
+- 恢复演示数据：`npm run db:reset`，或在开发环境调用 `POST /api/dev/reset` 并传入 `{ "confirm": "RESET_DEMO" }`。该操作只恢复固定 demo ID，不物理删除业务记录，也不绕过状态机重置已有内容的工作流状态。
 
 所有时间以 ISO 8601 文本保存，所有业务 ID 使用 UUID。核心层级通过包含 `organization_id` 的复合外键约束，服务层所有 ID 查询同时带组织条件。数据库文件被 Git 忽略，进程重启和页面刷新不会清空数据。
 
@@ -87,8 +88,12 @@ npm run dev
 - `GET/PUT /api/content-plans/[id]`
 - `GET/POST /api/contents`
 - `GET/PUT /api/contents/[id]`
+- `POST /api/contents/[id]/transition`
+- `GET /api/contents/[id]/history`
 
 `GET /api/content-plans` 支持 `accountId`、`year`、`month`、`status`、`page`、`pageSize`。`GET /api/contents` 支持关键字、客户/品牌/门店/账号/计划、内容类型、目标、优先级、运营人、状态、计划发布日期和分页。
+
+`contents.status` 只使用 `IDEA`、`SCRIPTING`、`WAITING_APPROVAL`、`APPROVED`、`WAITING_SHOOT`、`SHOT`、`EDITING`、`WAITING_REVIEW`、`REVISION`、`READY_TO_PUBLISH`、`PUBLISHED`、`REVIEWED`。普通 `PUT /api/contents/[id]` 不接受 `status`；必须通过状态 API 并写入原因。涉及 Shoot 关系或 Publish 记录的转换不允许由通用 API 直接执行。
 
 `GET /api/clients` 支持 `search`、`industry`、`ownerUserId`、`cooperationStatus`、`status`、`page`、`pageSize`。核心业务对象不提供物理删除 API，停用请更新为 `status=inactive`。
 
@@ -126,4 +131,4 @@ npm run build
 
 ## 当前边界
 
-当前未接入真实 OAuth、抖音 API、脚本版本/审核流程、自动发布、GMV、支付、视频生成、自动剪辑、数字人或企业生产数据。第四阶段没有调用 AI，`current_*_version_id`、`active_approved_*_version_id` 和 `ai_review_status` 仅保留可空指针；账号页旧的内容统计占位仍明确返回 0 与 `implemented=false`。
+当前未接入真实 OAuth、抖音 API、脚本版本/客户审核对象、Shoot 任务、Publish 记录、自动发布、GMV、支付、视频生成、自动剪辑、数字人或企业生产数据。因此 `APPROVED → WAITING_SHOOT`、`WAITING_SHOOT → APPROVED/SHOT` 和 `READY_TO_PUBLISH → PUBLISHED` 目前只会被服务端阻止，不伪造尚未存在的业务副作用。`current_*_version_id`、`active_approved_*_version_id` 和 `ai_review_status` 仍仅为可空指针。

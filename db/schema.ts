@@ -1,7 +1,8 @@
 import { check, foreignKey, index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';
 import {
-  accountTypes, businessStatuses, contentGoals, contentPriorities, contentTypes, cooperationStatuses, hookTypes,
+  accountTypes, businessStatuses, contentGoals, contentPriorities, contentStatuses, contentStatusTriggers,
+  contentTypes, cooperationStatuses, hookTypes,
 } from './constants';
 import {
   organizationStatuses,
@@ -316,7 +317,7 @@ export const contents = sqliteTable('contents', {
   ctaType: text('cta_type').notNull().default(''),
   localElement: text('local_element').notNull().default(''),
   peopleJson: listColumn('people_json'),
-  status: text('status', { enum: businessStatuses }).notNull().default('active'),
+  status: text('status', { enum: contentStatuses }).notNull().default('IDEA'),
   priority: text('priority', { enum: contentPriorities }).notNull().default('normal'),
   operatorId: text('operator_id').notNull(),
   plannedPublishDate: text('planned_publish_date'),
@@ -346,8 +347,29 @@ export const contents = sqliteTable('contents', {
   check('contents_goal_valid', sql`${t.contentGoal} IN ('exposure', 'followers', 'trust', 'click', 'conversion', 'gmv')`),
   check('contents_hook_valid', sql`${t.hookType} IN ('contrast', 'conflict', 'price', 'question', 'identity', 'local', 'result', 'mistake', 'secret', 'challenge', 'other')`),
   check('contents_priority_valid', sql`${t.priority} IN ('low', 'normal', 'high', 'urgent')`),
-  check('contents_status_valid', sql`${t.status} IN ('active', 'inactive')`),
+  check('contents_status_valid', sql`${t.status} IN ('IDEA', 'SCRIPTING', 'WAITING_APPROVAL', 'APPROVED', 'WAITING_SHOOT', 'SHOT', 'EDITING', 'WAITING_REVIEW', 'REVISION', 'READY_TO_PUBLISH', 'PUBLISHED', 'REVIEWED')`),
   check('contents_people_array', sql`json_type(${t.peopleJson}) = 'array'`),
+]);
+
+export const contentStatusLogs = sqliteTable('content_status_logs', {
+  id: text('id').primaryKey(),
+  organizationId: text('organization_id').notNull().references(() => organizations.id),
+  contentId: text('content_id').notNull(),
+  previousStatus: text('previous_status', { enum: contentStatuses }).notNull(),
+  newStatus: text('new_status', { enum: contentStatuses }).notNull(),
+  triggerType: text('trigger_type', { enum: contentStatusTriggers }).notNull(),
+  triggerId: text('trigger_id'),
+  operatorId: text('operator_id').notNull(),
+  reason: text('reason').notNull(),
+  isDemo: integer('is_demo', { mode: 'boolean' }).notNull().default(false),
+  createdAt: text('created_at').notNull(),
+}, (t) => [
+  index('idx_content_status_logs_org_content_created').on(t.organizationId, t.contentId, t.createdAt),
+  foreignKey({ columns: [t.organizationId, t.contentId], foreignColumns: [contents.organizationId, contents.id] }),
+  foreignKey({ columns: [t.organizationId, t.operatorId], foreignColumns: [users.organizationId, users.id] }),
+  check('content_status_logs_previous_valid', sql`${t.previousStatus} IN ('IDEA', 'SCRIPTING', 'WAITING_APPROVAL', 'APPROVED', 'WAITING_SHOOT', 'SHOT', 'EDITING', 'WAITING_REVIEW', 'REVISION', 'READY_TO_PUBLISH', 'PUBLISHED', 'REVIEWED')`),
+  check('content_status_logs_new_valid', sql`${t.newStatus} IN ('IDEA', 'SCRIPTING', 'WAITING_APPROVAL', 'APPROVED', 'WAITING_SHOOT', 'SHOT', 'EDITING', 'WAITING_REVIEW', 'REVISION', 'READY_TO_PUBLISH', 'PUBLISHED', 'REVIEWED')`),
+  check('content_status_logs_trigger_valid', sql`${t.triggerType} IN ('manual', 'shoot', 'publish', 'system')`),
 ]);
 
 export type ClientRow = typeof clients.$inferSelect;
@@ -357,3 +379,4 @@ export type StoreRow = typeof stores.$inferSelect;
 export type AccountRow = typeof accounts.$inferSelect;
 export type MonthlyPlanRow = typeof monthlyPlans.$inferSelect;
 export type ContentRow = typeof contents.$inferSelect;
+export type ContentStatusLogRow = typeof contentStatusLogs.$inferSelect;
