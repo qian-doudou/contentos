@@ -262,7 +262,9 @@ describe('script approval security', () => {
       reviewerType: 'internal_user',
       reviewerUserId: ids.owner,
     });
-    const approved = service().decide(second.workspace.approvals[0].id, {
+    const pendingApproval = second.workspace.approvals.find((approval) => approval.status === 'pending');
+    expect(pendingApproval).toBeDefined();
+    const approved = service().decide(pendingApproval!.id, {
       status: 'approved', comment: '内部审核通过',
     });
     expect(approved.content).toMatchObject({

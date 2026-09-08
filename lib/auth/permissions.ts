@@ -35,6 +35,10 @@ const organizationRoleMatrix: Record<OrganizationPermission, readonly User['role
 };
 const masterDataReaderRoles = new Set<User['role']>(['owner', 'admin', 'operator', 'viewer']);
 const contentWriterRoles = new Set<User['role']>(['owner', 'admin', 'operator']);
+export type ShootAccessScope =
+  | { kind: 'organization' }
+  | { kind: 'clients'; clientIds: string[] }
+  | { kind: 'photographer'; photographerId: string };
 
 const forbidden = (message = '当前身份无权执行此操作') =>
   new ApiError(403, 'PERMISSION_DENIED', message);
@@ -107,6 +111,35 @@ export function permissionService(db: Database, organizationId: string, userId: 
     if (actor.role === 'owner' || actor.role === 'admin') return null;
     return [...new Set(memberships().filter(row => contentWriterRoles.has(row.roleOverride ?? actor.role)).map(row => row.clientId))];
   };
+  const shootAccessScope = (): ShootAccessScope => {
+    if (actor.role === 'owner' || actor.role === 'admin') return { kind: 'organization' };
+    if (actor.role === 'photographer') return { kind: 'photographer', photographerId: actor.id };
+    if (actor.role === 'operator' || actor.role === 'viewer') return { kind: 'clients', clientIds: readableClientIds() ?? [] };
+    throw forbidden('当前角色无权访问拍摄任务');
+  };
+  const requireShootRead = (clientId: string, photographerId: string) => {
+    const scope = shootAccessScope();
+    if (scope.kind === 'organization') return;
+    if (scope.kind === 'photographer') {
+      if (scope.photographerId !== photographerId) throw forbidden('摄影人员只能查看本人的拍摄任务');
+      return;
+    }
+    if (!scope.clientIds.includes(z.uuid().parse(clientId))) throw forbidden('当前身份未被授权访问该客户的拍摄任务');
+  };
+  const canScheduleShoot = (clientId: string) => canWriteClient(clientId);
+  const requireShootWrite = (clientId: string) => {
+    if (!canScheduleShoot(clientId)) throw forbidden('当前身份无权管理该客户的拍摄排期');
+  };
+  const canExecuteShoot = (clientId: string, photographerId: string) => {
+    if (actor.role === 'photographer') {
+      return actor.id === photographerId;
+    }
+    return canScheduleShoot(clientId);
+  };
+  const requireShootExecution = (clientId: string, photographerId: string) => {
+    if (!canExecuteShoot(clientId, photographerId))
+      throw forbidden('当前身份无权更新该拍摄任务的执行状态');
+  };
 
   return {
     organization,
@@ -120,5 +153,11 @@ export function permissionService(db: Database, organizationId: string, userId: 
     canWriteClient,
     requireClientWrite,
     writableClientIds,
+    shootAccessScope,
+    requireShootRead,
+    canScheduleShoot,
+    requireShootWrite,
+    canExecuteShoot,
+    requireShootExecution,
   };
 }

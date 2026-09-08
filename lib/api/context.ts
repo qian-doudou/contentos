@@ -7,6 +7,7 @@ import { memoryService } from '@/lib/memory/service';
 import { historyRetrievalService } from '@/lib/history/service';
 import { aiPlannerService } from '@/lib/planner/service';
 import { publicScriptReviewService, scriptApprovalService } from '@/lib/scripts/service';
+import { shootService } from '@/lib/shoots/service';
 import { z } from 'zod';
 
 export const DEV_USER_COOKIE = 'contentos_dev_user_id';
@@ -67,4 +68,8 @@ export function currentScriptApproval(request?: Request) {
 }
 export function publicScriptReview() {
   return publicScriptReviewService(db);
+}
+export function currentShoots(request?: Request) {
+  const { organizationId, userId } = localContextIds(request);
+  return shootService(db, organizationId, userId);
 }

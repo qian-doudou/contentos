@@ -7,6 +7,7 @@ import {
   memoryScopeTypes, memorySourceTypes, memoryStatuses, memoryTypes, priceConfigStatuses,
   plannerCandidateStatuses, plannerQualityStatuses, plannerSessionStatuses,
   approvalReviewerTypes, approvalStatuses, approvalTypes, scriptSourceTypes,
+  shootItemStatuses, shootStatuses,
 } from './constants';
 import {
   organizationStatuses,
@@ -479,6 +480,67 @@ export const approvals = sqliteTable('approvals', {
   )`),
 ]);
 
+export const shoots = sqliteTable('shoots', {
+  id: text('id').primaryKey(),
+  organizationId: text('organization_id').notNull().references(() => organizations.id),
+  clientId: text('client_id').notNull(),
+  storeId: text('store_id').notNull(),
+  shootDate: text('shoot_date').notNull(),
+  startTime: text('start_time').notNull(),
+  endTime: text('end_time').notNull(),
+  operatorId: text('operator_id').notNull(),
+  photographerId: text('photographer_id').notNull(),
+  location: text('location').notNull().default(''),
+  notes: text('notes').notNull().default(''),
+  status: text('status', { enum: shootStatuses }).notNull().default('planned'),
+  isDemo: integer('is_demo', { mode: 'boolean' }).notNull().default(false),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+}, (t) => [
+  uniqueIndex('uq_shoots_org_id').on(t.organizationId, t.id),
+  index('idx_shoots_org_date_status').on(t.organizationId, t.shootDate, t.status),
+  index('idx_shoots_org_client_date').on(t.organizationId, t.clientId, t.shootDate),
+  index('idx_shoots_org_photographer_date').on(t.organizationId, t.photographerId, t.shootDate),
+  foreignKey({ columns: [t.organizationId, t.clientId], foreignColumns: [clients.organizationId, clients.id] }),
+  foreignKey({ columns: [t.organizationId, t.storeId], foreignColumns: [stores.organizationId, stores.id] }),
+  foreignKey({ columns: [t.organizationId, t.operatorId], foreignColumns: [users.organizationId, users.id] }),
+  foreignKey({ columns: [t.organizationId, t.photographerId], foreignColumns: [users.organizationId, users.id] }),
+  check('shoots_date_valid', sql`length(${t.shootDate}) = 10 AND date(${t.shootDate}) IS NOT NULL`),
+  check('shoots_start_time_valid', sql`length(${t.startTime}) = 5 AND time(${t.startTime}) IS NOT NULL`),
+  check('shoots_end_time_valid', sql`length(${t.endTime}) = 5 AND time(${t.endTime}) IS NOT NULL`),
+  check('shoots_time_order', sql`${t.startTime} < ${t.endTime}`),
+  check('shoots_status_valid', sql`${t.status} IN ('planned', 'in_progress', 'completed', 'partially_completed', 'cancelled', 'rescheduled')`),
+]);
+
+export const shootContents = sqliteTable('shoot_contents', {
+  id: text('id').primaryKey(),
+  organizationId: text('organization_id').notNull().references(() => organizations.id),
+  shootId: text('shoot_id').notNull(),
+  contentId: text('content_id').notNull(),
+  approvedScriptVersionId: text('approved_script_version_id').notNull(),
+  shootItemStatus: text('shoot_item_status', { enum: shootItemStatuses }).notNull().default('planned'),
+  missingShots: text('missing_shots').notNull().default(''),
+  note: text('note').notNull().default(''),
+  isDemo: integer('is_demo', { mode: 'boolean' }).notNull().default(false),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+}, (t) => [
+  uniqueIndex('uq_shoot_contents_org_id').on(t.organizationId, t.id),
+  uniqueIndex('uq_shoot_contents_org_shoot_content').on(t.organizationId, t.shootId, t.contentId),
+  uniqueIndex('uq_shoot_contents_active_content').on(t.organizationId, t.contentId)
+    .where(sql`${t.shootItemStatus} IN ('planned', 'missing_shots')`),
+  index('idx_shoot_contents_org_shoot_status').on(t.organizationId, t.shootId, t.shootItemStatus),
+  index('idx_shoot_contents_org_content').on(t.organizationId, t.contentId, t.createdAt),
+  foreignKey({ columns: [t.organizationId, t.shootId], foreignColumns: [shoots.organizationId, shoots.id] }),
+  foreignKey({ columns: [t.organizationId, t.contentId], foreignColumns: [contents.organizationId, contents.id] }),
+  foreignKey({
+    columns: [t.organizationId, t.contentId, t.approvedScriptVersionId],
+    foreignColumns: [scriptVersions.organizationId, scriptVersions.contentId, scriptVersions.id],
+  }),
+  check('shoot_contents_status_valid', sql`${t.shootItemStatus} IN ('planned', 'shot', 'missing_shots', 'rescheduled', 'cancelled')`),
+  check('shoot_contents_missing_detail', sql`${t.shootItemStatus} <> 'missing_shots' OR length(trim(${t.missingShots})) > 0`),
+]);
+
 export const contentEmbeddings = sqliteTable('content_embeddings', {
   id: text('id').primaryKey(),
   organizationId: text('organization_id').notNull().references(() => organizations.id),
@@ -556,6 +618,8 @@ export type ContentRow = typeof contents.$inferSelect;
 export type ContentStatusLogRow = typeof contentStatusLogs.$inferSelect;
 export type ScriptVersionRow = typeof scriptVersions.$inferSelect;
 export type ApprovalRow = typeof approvals.$inferSelect;
+export type ShootRow = typeof shoots.$inferSelect;
+export type ShootContentRow = typeof shootContents.$inferSelect;
 export type ContentImportBatchRow = typeof contentImportBatches.$inferSelect;
 export type ContentEmbeddingRow = typeof contentEmbeddings.$inferSelect;
 export type HistoryRetrievalRow = typeof historyRetrievals.$inferSelect;

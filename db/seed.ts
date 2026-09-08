@@ -3,7 +3,8 @@ import { and, eq, isNull } from 'drizzle-orm';
 import { db, sqlite } from './client';
 import {
   accounts, appSettings, auditLogs, brands, clientMembers, clients, contents, monthlyPlans,
-  memories, organizationAiQuotas, organizations, skillVersions, skills, stores, users,
+  contentStatusLogs, memories, organizationAiQuotas, organizations, scriptVersions, shootContents, shoots,
+  skillVersions, skills, stores, users,
 } from './schema';
 import { accountSchema, brandSchema, clientSchema, storeSchema, accountDefaults, brandDefaults, clientDefaults, storeDefaults } from '../lib/master-data/contracts';
 import { contentSchema, monthlyPlanSchema } from '../lib/content/contracts';
@@ -41,6 +42,11 @@ export const DEMO_IDS = {
   historyContentFreshness: '0198f744-8e18-7ae2-a780-52a0e20c1963',
   historyContentLocal: '0198f744-8e18-7ae2-a780-52a0e20c1964',
   historyContentOffer: '0198f744-8e18-7ae2-a780-52a0e20c1965',
+  shootContent: '0198f744-8e18-7ae2-a780-52a0e20c1966',
+  approvedScript: '0198f744-8e18-7ae2-a780-52a0e20c19a1',
+  shoot: '0198f744-8e18-7ae2-a780-52a0e20c19a2',
+  shootItem: '0198f744-8e18-7ae2-a780-52a0e20c19a3',
+  shootStatusLog: '0198f744-8e18-7ae2-a780-52a0e20c19a4',
 } as const;
 
 const duplicateJudgeV2VersionId = '0198f744-8e18-7ae2-a780-52a0e20c1b14';
@@ -361,7 +367,7 @@ export function seedDemoData(options: { reset?: boolean } = {}) {
         id: DEMO_IDS.phaseSetting,
         organizationId: DEMO_IDS.organization,
         key: 'product.phase',
-        valueJson: JSON.stringify({ phase: 10, label: 'Script Approval' }),
+        valueJson: JSON.stringify({ phase: 11, label: 'Shoot Management' }),
         isSecret: false,
         isDemo: true,
         createdAt: now,
@@ -369,7 +375,7 @@ export function seedDemoData(options: { reset?: boolean } = {}) {
       })
       .onConflictDoUpdate({
         target: [appSettings.organizationId, appSettings.key],
-        set: { valueJson: JSON.stringify({ phase: 10, label: 'Script Approval' }), updatedAt: now },
+        set: { valueJson: JSON.stringify({ phase: 11, label: 'Shoot Management' }), updatedAt: now },
       })
       .run();
 
@@ -575,6 +581,116 @@ export function seedDemoData(options: { reset?: boolean } = {}) {
         eq(contents.organizationId, DEMO_IDS.organization),
         eq(contents.isDemo, true),
       )).run();
+    }
+
+    const scheduledContent = contentSchema.parse({
+      ...content,
+      id: DEMO_IDS.shootContent,
+      title: '老板带你看手切羊肉的纹理',
+      contentType: 'product',
+      contentGoal: 'trust',
+      topic: '手切羊肉如何判断状态',
+      angle: '老板在门店备菜区展示现切细节',
+      hookType: 'question',
+      hookText: '这盘羊肉好不好，先看纹理。',
+      coreMessage: '用真实现切过程呈现食材状态。',
+      productText: '手切羊肉',
+      ctaType: '到店了解',
+      localElement: '菏泽本地口音',
+      peopleJson: ['老板'],
+      status: 'APPROVED',
+      priority: 'high',
+      plannedPublishDate: '2026-09-13T00:00:00.000Z',
+      deadline: '2026-09-11T12:00:00.000Z',
+      currentScriptVersionId: DEMO_IDS.approvedScript,
+      activeApprovedScriptVersionId: DEMO_IDS.approvedScript,
+      createdAt: now,
+      updatedAt: now,
+    });
+    const existingScheduledContent = db.select({ id: contents.id, isDemo: contents.isDemo }).from(contents)
+      .where(and(eq(contents.organizationId, DEMO_IDS.organization), eq(contents.id, DEMO_IDS.shootContent))).get();
+    if (existingScheduledContent && !existingScheduledContent.isDemo)
+      throw new Error('Demo shoot content ID is already owned by a non-demo record');
+    db.insert(contents).values(scheduledContent).onConflictDoNothing().run();
+    db.insert(scriptVersions).values({
+      id: DEMO_IDS.approvedScript,
+      organizationId: DEMO_IDS.organization,
+      contentId: DEMO_IDS.shootContent,
+      versionNo: 1,
+      scriptJson: {
+        title: '老板带你看手切羊肉的纹理',
+        hook: '这盘羊肉好不好，先看纹理。',
+        spoken_script: '今天不讲夸张的话，就在备菜区看一盘手切羊肉的纹理、肥瘦和现切过程。',
+        shots: [
+          { scene: '门店备菜区', visual: '老板端起手切羊肉，镜头推近', spoken_line: '先看这一盘的纹理。' },
+          { scene: '切肉台', visual: '现切过程和刀工特写', spoken_line: '再看它是怎么切出来的。' },
+          { scene: '用餐区', visual: '铜锅沸腾与下锅画面', spoken_line: '最后下铜锅看口感。' },
+        ],
+        product_integration: '手切羊肉与传统铜锅',
+        cta: '到店可以先看现切再点单。',
+        hashtags: ['#菏泽美食', '#手切羊肉', '#德祥楼'],
+      },
+      sourceType: 'operator',
+      changeSummary: '拍摄管理阶段的已批准演示脚本',
+      createdBy: DEMO_IDS.operator,
+      isDemo: true,
+      createdAt: now,
+    }).onConflictDoNothing().run();
+    db.insert(shoots).values({
+      id: DEMO_IDS.shoot,
+      organizationId: DEMO_IDS.organization,
+      clientId: DEMO_IDS.client,
+      storeId: DEMO_IDS.store,
+      shootDate: '2026-09-10',
+      startTime: '09:30',
+      endTime: '11:30',
+      operatorId: DEMO_IDS.operator,
+      photographerId: DEMO_IDS.photographer,
+      location: '德祥楼（演示门店）备菜区',
+      notes: '先拍食材和切肉台，营业前完成环境空镜。',
+      status: 'planned',
+      isDemo: true,
+      createdAt: now,
+      updatedAt: now,
+    }).onConflictDoNothing().run();
+    const existingShootItem = db.select({ id: shootContents.id }).from(shootContents).where(and(
+      eq(shootContents.organizationId, DEMO_IDS.organization), eq(shootContents.id, DEMO_IDS.shootItem),
+    )).get();
+    if (!existingShootItem) {
+      const currentScheduledContent = db.select().from(contents).where(and(
+        eq(contents.organizationId, DEMO_IDS.organization), eq(contents.id, DEMO_IDS.shootContent),
+      )).get();
+      if (!currentScheduledContent || currentScheduledContent.status !== 'APPROVED' || currentScheduledContent.activeApprovedScriptVersionId !== DEMO_IDS.approvedScript)
+        throw new Error('Demo shoot content is not ready for initial scheduling');
+      db.insert(shootContents).values({
+        id: DEMO_IDS.shootItem,
+        organizationId: DEMO_IDS.organization,
+        shootId: DEMO_IDS.shoot,
+        contentId: DEMO_IDS.shootContent,
+        approvedScriptVersionId: DEMO_IDS.approvedScript,
+        shootItemStatus: 'planned',
+        missingShots: '',
+        note: '',
+        isDemo: true,
+        createdAt: now,
+        updatedAt: now,
+      }).run();
+      db.update(contents).set({ status: 'WAITING_SHOOT', updatedAt: now }).where(and(
+        eq(contents.organizationId, DEMO_IDS.organization), eq(contents.id, DEMO_IDS.shootContent), eq(contents.status, 'APPROVED'),
+      )).run();
+      db.insert(contentStatusLogs).values({
+        id: DEMO_IDS.shootStatusLog,
+        organizationId: DEMO_IDS.organization,
+        contentId: DEMO_IDS.shootContent,
+        previousStatus: 'APPROVED',
+        newStatus: 'WAITING_SHOOT',
+        triggerType: 'shoot',
+        triggerId: DEMO_IDS.shootItem,
+        operatorId: DEMO_IDS.operator,
+        reason: '加入 2026-09-10 拍摄排期',
+        isDemo: true,
+        createdAt: now,
+      }).run();
     }
 
     for (const memory of [
