@@ -18,7 +18,7 @@ describe('SQLite migration', () => {
     expect(sqlite.prepare("select count(*) as value from sqlite_schema where type = 'table' and name = 'skills'").get()).toEqual({ value: 1 });
   });
 
-  it('creates every phase-nine table with organization scope', () => {
+  it('creates every phase-ten table with organization scope', () => {
     sqlite = new Database(':memory:');
     sqlite.pragma('foreign_keys = ON');
     const migrations = readdirSync(resolve('drizzle'))
@@ -30,16 +30,16 @@ describe('SQLite migration', () => {
 
     const tables = sqlite.prepare("select name from sqlite_schema where type = 'table' order by name").all() as Array<{ name: string }>;
     expect(tables.map((row) => row.name)).toEqual([
-      'accounts', 'ai_point_ledger', 'ai_usage_logs', 'app_settings', 'audit_logs', 'brands', 'client_members', 'clients',
+      'accounts', 'ai_point_ledger', 'ai_usage_logs', 'app_settings', 'approvals', 'audit_logs', 'brands', 'client_members', 'clients',
       'content_embeddings', 'content_import_batches', 'content_status_logs', 'contents', 'context_snapshots', 'history_retrieval_items', 'history_retrievals',
       'memories', 'model_price_configs', 'monthly_plans', 'organization_ai_quotas', 'organizations', 'planner_candidates', 'planner_sessions',
-      'run_steps', 'runs', 'skill_versions', 'skills', 'stores', 'users',
+      'run_steps', 'runs', 'script_versions', 'skill_versions', 'skills', 'stores', 'users',
     ]);
 
     for (const table of [
-      'accounts', 'ai_point_ledger', 'ai_usage_logs', 'app_settings', 'audit_logs', 'brands', 'client_members', 'clients',
+      'accounts', 'ai_point_ledger', 'ai_usage_logs', 'app_settings', 'approvals', 'audit_logs', 'brands', 'client_members', 'clients',
       'content_embeddings', 'content_import_batches', 'content_status_logs', 'contents', 'context_snapshots', 'history_retrieval_items', 'history_retrievals',
-      'memories', 'monthly_plans', 'organization_ai_quotas', 'planner_candidates', 'planner_sessions', 'run_steps', 'runs', 'skill_versions',
+      'memories', 'monthly_plans', 'organization_ai_quotas', 'planner_candidates', 'planner_sessions', 'run_steps', 'runs', 'script_versions', 'skill_versions',
       'skills', 'stores', 'users',
     ]) {
       const columns = sqlite.prepare(`pragma table_info(${table})`).all() as Array<{ name: string }>;
@@ -74,6 +74,14 @@ describe('SQLite migration', () => {
     expect(new Set(plannerSessionForeignKeys.map(key => key.id)).size).toBe(6);
     const plannerCandidateForeignKeys = sqlite.prepare('pragma foreign_key_list(planner_candidates)').all() as Array<{ id: number }>;
     expect(new Set(plannerCandidateForeignKeys.map(key => key.id)).size).toBe(6);
+    const scriptVersionForeignKeys = sqlite.prepare('pragma foreign_key_list(script_versions)').all() as Array<{ id: number }>;
+    expect(new Set(scriptVersionForeignKeys.map(key => key.id)).size).toBe(3);
+    const approvalForeignKeys = sqlite.prepare('pragma foreign_key_list(approvals)').all() as Array<{ id: number }>;
+    expect(new Set(approvalForeignKeys.map(key => key.id)).size).toBe(3);
+    const integrityTriggers = sqlite.prepare("select name from sqlite_schema where type = 'trigger' and name like 'validate_%' order by name").all() as Array<{ name: string }>;
+    expect(integrityTriggers.map(row => row.name)).toEqual([
+      'validate_content_script_pointers_update', 'validate_script_approval_version_insert', 'validate_script_approval_version_update',
+    ]);
 
     const contentColumns = sqlite.prepare('pragma table_info(contents)').all() as Array<{ name: string }>;
     expect(contentColumns.some(column => column.name === 'script')).toBe(false);

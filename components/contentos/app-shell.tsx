@@ -60,7 +60,7 @@ function Navigation({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+function AuthenticatedAppShell({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [switching, setSwitching] = useState(false);
   const identity = useApiData('/api/dev/identity', devIdentityDataSchema);
@@ -102,7 +102,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </div>
             <div className="hidden text-sm text-slate-500 lg:block">{identity.data?.organization.name || '正在读取组织…'}</div>
             <div className="flex items-center gap-3">
-              <span className="hidden rounded-full border border-slate-200 px-3 py-1.5 text-xs text-slate-500 xl:inline-flex">Phase 09 · AI Content Planner</span>
+              <span className="hidden rounded-full border border-slate-200 px-3 py-1.5 text-xs text-slate-500 xl:inline-flex">Phase 10 · Script Approval</span>
               {identity.loading ? <span className="text-xs text-slate-400">身份加载中…</span> : identity.error ? <Button variant="outline" size="sm" onClick={identity.reload}>身份加载失败</Button> : identity.data && (
                 identity.data.switchingEnabled
                   ? <NativeSelect aria-label="开发用户切换器" className="w-40" value={identity.data.currentUser.id} disabled={switching} onChange={event => void switchIdentity(event.target.value)}>
@@ -118,4 +118,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </div>
     </div>
   );
+}
+
+export function AppShell({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  if (pathname.startsWith('/review/')) {
+    return <main className="min-h-screen bg-slate-50 px-4 py-8 text-slate-950 sm:px-6 lg:py-12">{children}</main>;
+  }
+  return <AuthenticatedAppShell>{children}</AuthenticatedAppShell>;
 }

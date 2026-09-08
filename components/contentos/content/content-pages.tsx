@@ -19,6 +19,7 @@ import { ContentHeading, ContentNav, formatLocalDate, periodLabel } from './comm
 import { ContentEditorDialog, ContentForm } from './content-form';
 import { ContentWorkflowPanel } from './workflow-panel';
 import { WorkflowBoard, WorkflowStatusBadge } from './workflow-board';
+import { ScriptApprovalPanel } from '@/components/contentos/script/script-approval-panel';
 
 const priorityTone: Record<string, string> = {
   low: 'bg-slate-100 text-slate-600', normal: 'bg-cyan-50 text-cyan-700', high: 'bg-amber-50 text-amber-700', urgent: 'bg-rose-50 text-rose-700',
@@ -80,7 +81,7 @@ export function NewContentPage() {
   const state = useApiData('/api/contents?pageSize=1', contentListSchema);
   const params = useSearchParams();
   const router = useRouter();
-  return <div className="space-y-6"><ContentHeading title="新建内容策划" description="建立结构化内容档案，脚本正文将由后续版本表承载。"><Button variant="outline" nativeButton={false} render={<Link href="/contents" />}>返回内容</Button></ContentHeading><ContentNav />
+  return <div className="space-y-6"><ContentHeading title="新建内容策划" description="建立结构化内容档案；脚本正文由独立版本表承载，不写入 Content 主表。"><Button variant="outline" nativeButton={false} render={<Link href="/contents" />}>返回内容</Button></ContentHeading><ContentNav />
     {state.loading ? <LoadingData /> : state.error ? <ErrorData error={state.error} retry={state.reload} /> : state.data && (
       state.data.permissions.canWrite ? <section className="surface-card"><ContentForm options={state.data.options} defaults={{ accountId: params.get('accountId') || undefined, planId: params.get('planId') || undefined }} onSaved={id => router.push('/contents/' + id + '?created=1')} /></section>
         : <section className="surface-card"><EmptyData title="无创建权限" description="当前身份没有可管理的客户账号。" /></section>
@@ -109,7 +110,8 @@ export function ContentDetailPage({ id }: { id: string }) {
     </section>
     <section className="grid gap-4 lg:grid-cols-2"><article className="surface-card"><h2 className="text-lg font-semibold">选题与切入</h2><dl className="mt-5 space-y-5"><Field label="选题" value={item.topic} /><Field label="切入角度" value={item.angle} /><Field label="核心信息" value={item.coreMessage} /></dl></article><article className="surface-card"><h2 className="text-lg font-semibold">钩子与转化</h2><dl className="mt-5 space-y-5"><Field label="钩子类型" value={hookTypeLabels[item.hookType]} /><Field label="钩子文案" value={item.hookText} /><Field label="行动引导" value={item.ctaType} /></dl></article></section>
     <section className="grid gap-4 lg:grid-cols-3"><article className="surface-card"><h2 className="font-semibold">产品表达</h2><p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-slate-600">{item.productText || '未填写'}</p></article><article className="surface-card"><h2 className="font-semibold">本地元素</h2><p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-slate-600">{item.localElement || '未填写'}</p></article><article className="surface-card"><h2 className="font-semibold">出镜人物</h2><div className="mt-4"><Tags values={item.peopleJson} /></div></article></section>
+    <ScriptApprovalPanel contentId={item.id} onContentChanged={state.reload} />
     <ContentWorkflowPanel content={item} onChanged={state.reload} />
-    <section className="surface-card border-dashed"><h2 className="font-semibold">脚本与剪辑版本</h2><p className="mt-2 text-sm leading-6 text-slate-500">contents 主表不保存脚本正文。当前脚本、已批准脚本、剪辑版本与 AI 审核状态均为空，将在后续阶段通过独立版本表接入。</p></section>
+    <section className="surface-card border-dashed"><h2 className="font-semibold">剪辑版本</h2><p className="mt-2 text-sm leading-6 text-slate-500">剪辑版本与最终视频审核将在后续阶段接入；脚本与客户审核已使用独立版本和审批记录。</p></section>
   </div>;
 }

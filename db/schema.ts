@@ -6,6 +6,7 @@ import {
   contentStatuses, contentStatusTriggers, contentTypes, cooperationStatuses, historyRetrievalMethods, hookTypes, modelProfiles,
   memoryScopeTypes, memorySourceTypes, memoryStatuses, memoryTypes, priceConfigStatuses,
   plannerCandidateStatuses, plannerQualityStatuses, plannerSessionStatuses,
+  approvalReviewerTypes, approvalStatuses, approvalTypes, scriptSourceTypes,
 } from './constants';
 import {
   organizationStatuses,
@@ -411,7 +412,71 @@ export const contentStatusLogs = sqliteTable('content_status_logs', {
   foreignKey({ columns: [t.organizationId, t.operatorId], foreignColumns: [users.organizationId, users.id] }),
   check('content_status_logs_previous_valid', sql`${t.previousStatus} IN ('IDEA', 'SCRIPTING', 'WAITING_APPROVAL', 'APPROVED', 'WAITING_SHOOT', 'SHOT', 'EDITING', 'WAITING_REVIEW', 'REVISION', 'READY_TO_PUBLISH', 'PUBLISHED', 'REVIEWED')`),
   check('content_status_logs_new_valid', sql`${t.newStatus} IN ('IDEA', 'SCRIPTING', 'WAITING_APPROVAL', 'APPROVED', 'WAITING_SHOOT', 'SHOT', 'EDITING', 'WAITING_REVIEW', 'REVISION', 'READY_TO_PUBLISH', 'PUBLISHED', 'REVIEWED')`),
-  check('content_status_logs_trigger_valid', sql`${t.triggerType} IN ('manual', 'shoot', 'publish', 'system')`),
+  check('content_status_logs_trigger_valid', sql`${t.triggerType} IN ('manual', 'approval', 'shoot', 'publish', 'system')`),
+]);
+
+export const scriptVersions = sqliteTable('script_versions', {
+  id: text('id').primaryKey(),
+  organizationId: text('organization_id').notNull().references(() => organizations.id),
+  contentId: text('content_id').notNull(),
+  versionNo: integer('version_no').notNull(),
+  scriptJson: text('script_json', { mode: 'json' }).$type<{
+    title: string;
+    hook: string;
+    spoken_script: string;
+    shots: Array<Record<string, unknown>>;
+    product_integration: string;
+    cta: string;
+    hashtags: string[];
+  }>().notNull(),
+  sourceType: text('source_type', { enum: scriptSourceTypes }).notNull(),
+  changeSummary: text('change_summary').notNull(),
+  createdBy: text('created_by').notNull(),
+  isDemo: integer('is_demo', { mode: 'boolean' }).notNull().default(false),
+  createdAt: text('created_at').notNull(),
+}, (t) => [
+  uniqueIndex('uq_script_versions_org_id').on(t.organizationId, t.id),
+  uniqueIndex('uq_script_versions_org_content_version').on(t.organizationId, t.contentId, t.versionNo),
+  uniqueIndex('uq_script_versions_org_content_id').on(t.organizationId, t.contentId, t.id),
+  index('idx_script_versions_org_content_created').on(t.organizationId, t.contentId, t.createdAt),
+  foreignKey({ columns: [t.organizationId, t.contentId], foreignColumns: [contents.organizationId, contents.id] }),
+  foreignKey({ columns: [t.organizationId, t.createdBy], foreignColumns: [users.organizationId, users.id] }),
+  check('script_versions_version_positive', sql`${t.versionNo} >= 1 AND typeof(${t.versionNo}) = 'integer'`),
+  check('script_versions_source_valid', sql`${t.sourceType} IN ('ai', 'operator', 'client_revision', 'rewrite')`),
+  check('script_versions_json_valid', sql`json_valid(${t.scriptJson}) AND json_type(${t.scriptJson}) = 'object'`),
+]);
+
+export const approvals = sqliteTable('approvals', {
+  id: text('id').primaryKey(),
+  organizationId: text('organization_id').notNull().references(() => organizations.id),
+  contentId: text('content_id').notNull(),
+  approvalType: text('approval_type', { enum: approvalTypes }).notNull(),
+  versionId: text('version_id').notNull(),
+  status: text('status', { enum: approvalStatuses }).notNull().default('pending'),
+  reviewerType: text('reviewer_type', { enum: approvalReviewerTypes }).notNull(),
+  reviewerUserId: text('reviewer_user_id'),
+  reviewTokenHash: text('review_token_hash'),
+  expiresAt: text('expires_at'),
+  comment: text('comment').notNull().default(''),
+  isDemo: integer('is_demo', { mode: 'boolean' }).notNull().default(false),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+}, (t) => [
+  uniqueIndex('uq_approvals_org_id').on(t.organizationId, t.id),
+  uniqueIndex('uq_approvals_review_token_hash').on(t.reviewTokenHash).where(sql`${t.reviewTokenHash} IS NOT NULL`),
+  index('idx_approvals_org_content_created').on(t.organizationId, t.contentId, t.createdAt),
+  index('idx_approvals_org_status_expiry').on(t.organizationId, t.status, t.expiresAt),
+  foreignKey({ columns: [t.organizationId, t.contentId], foreignColumns: [contents.organizationId, contents.id] }),
+  foreignKey({ columns: [t.organizationId, t.reviewerUserId], foreignColumns: [users.organizationId, users.id] }),
+  check('approvals_type_valid', sql`${t.approvalType} IN ('script', 'final_video')`),
+  check('approvals_status_valid', sql`${t.status} IN ('pending', 'approved', 'changes_requested', 'rejected', 'expired')`),
+  check('approvals_reviewer_type_valid', sql`${t.reviewerType} IN ('internal_user', 'external_client')`),
+  check('approvals_token_hash_valid', sql`${t.reviewTokenHash} IS NULL OR length(${t.reviewTokenHash}) = 64`),
+  check('approvals_reviewer_binding_valid', sql`(
+    ${t.reviewerType} = 'internal_user' AND ${t.reviewerUserId} IS NOT NULL AND ${t.reviewTokenHash} IS NULL AND ${t.expiresAt} IS NULL
+  ) OR (
+    ${t.reviewerType} = 'external_client' AND ${t.reviewerUserId} IS NULL AND ${t.reviewTokenHash} IS NOT NULL AND ${t.expiresAt} IS NOT NULL
+  )`),
 ]);
 
 export const contentEmbeddings = sqliteTable('content_embeddings', {
@@ -489,6 +554,8 @@ export type AccountRow = typeof accounts.$inferSelect;
 export type MonthlyPlanRow = typeof monthlyPlans.$inferSelect;
 export type ContentRow = typeof contents.$inferSelect;
 export type ContentStatusLogRow = typeof contentStatusLogs.$inferSelect;
+export type ScriptVersionRow = typeof scriptVersions.$inferSelect;
+export type ApprovalRow = typeof approvals.$inferSelect;
 export type ContentImportBatchRow = typeof contentImportBatches.$inferSelect;
 export type ContentEmbeddingRow = typeof contentEmbeddings.$inferSelect;
 export type HistoryRetrievalRow = typeof historyRetrievals.$inferSelect;

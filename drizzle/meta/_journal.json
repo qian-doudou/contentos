@@ -71,6 +71,13 @@
       "when": 1788842579296,
       "tag": "0009_flaky_scarlet_witch",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1788852166621,
+      "tag": "0010_rapid_captain_america",
+      "breakpoints": true
     }
   ]
 }

@@ -87,7 +87,7 @@ afterEach(() => sqlite.close());
 describe('deterministic content state machine', () => {
   it('contains exactly the specified legal transitions and rejects every other pair', () => {
     const expected = [
-      'IDEA>SCRIPTING', 'SCRIPTING>WAITING_APPROVAL', 'WAITING_APPROVAL>SCRIPTING', 'WAITING_APPROVAL>APPROVED',
+      'IDEA>SCRIPTING', 'SCRIPTING>WAITING_APPROVAL', 'WAITING_APPROVAL>SCRIPTING', 'WAITING_APPROVAL>APPROVED', 'APPROVED>WAITING_APPROVAL',
       'APPROVED>WAITING_SHOOT', 'WAITING_SHOOT>APPROVED', 'WAITING_SHOOT>SHOT', 'SHOT>EDITING',
       'EDITING>WAITING_REVIEW', 'WAITING_REVIEW>REVISION', 'REVISION>WAITING_REVIEW',
       'WAITING_REVIEW>READY_TO_PUBLISH', 'READY_TO_PUBLISH>PUBLISHED', 'PUBLISHED>REVIEWED',
@@ -109,7 +109,7 @@ describe('deterministic content state machine', () => {
     const mapped = kanbanColumns.flatMap(column => column.statuses);
     expect(mapped).toHaveLength(contentStatuses.length);
     expect([...mapped].sort()).toEqual([...contentStatuses].sort());
-    expect(manualNextStatuses('WAITING_APPROVAL')).toEqual(['SCRIPTING', 'APPROVED']);
+    expect(manualNextStatuses('WAITING_APPROVAL')).toEqual([]);
     expect(manualNextStatuses('APPROVED')).toEqual([]);
   });
 
@@ -131,12 +131,10 @@ describe('transactional transition service', () => {
     const first = service.transitionContent(data.content.id, { newStatus: 'SCRIPTING', reason: '开始编写脚本' });
     expect(first.content.status).toBe('SCRIPTING');
     expect(first.log).toMatchObject({ previousStatus: 'IDEA', newStatus: 'SCRIPTING', triggerType: 'manual', triggerId: null, operatorId: ids.operator });
-    service.transitionContent(data.content.id, { newStatus: 'WAITING_APPROVAL', reason: '提交客户审核' });
-    service.transitionContent(data.content.id, { newStatus: 'SCRIPTING', reason: '客户要求修改' });
     const history = service.contentHistory(data.content.id);
     expect(history.currentStatus).toBe('SCRIPTING');
-    expect(history.items).toHaveLength(3);
-    expect(history.items[0]).toMatchObject({ previousStatus: 'WAITING_APPROVAL', newStatus: 'SCRIPTING', operatorName: '运营' });
+    expect(history.items).toHaveLength(1);
+    expect(history.items[0]).toMatchObject({ previousStatus: 'IDEA', newStatus: 'SCRIPTING', operatorName: '运营' });
   });
 
   it('rolls the content update back when the status log side effect fails', () => {
@@ -155,6 +153,8 @@ describe('transactional transition service', () => {
     const service = contentService(db, ids.organizationA, ids.owner);
     expectApiError(() => service.transitionContent(data.content.id, { newStatus: 'APPROVED', reason: '跳级' }), 409, 'INVALID_STATUS_TRANSITION');
     for (const [from, to] of [
+      ['SCRIPTING', 'WAITING_APPROVAL'], ['WAITING_APPROVAL', 'SCRIPTING'], ['WAITING_APPROVAL', 'APPROVED'],
+      ['APPROVED', 'WAITING_APPROVAL'],
       ['APPROVED', 'WAITING_SHOOT'], ['WAITING_SHOOT', 'APPROVED'], ['WAITING_SHOOT', 'SHOT'],
       ['READY_TO_PUBLISH', 'PUBLISHED'],
     ] as const) {

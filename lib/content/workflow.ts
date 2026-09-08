@@ -4,13 +4,14 @@ import { ApiError } from '@/lib/api/envelope';
 export type ContentStatus = (typeof contentStatuses)[number];
 export type ContentStatusTrigger = (typeof contentStatusTriggers)[number];
 
-type TransitionRule = { from: ContentStatus; to: ContentStatus; trigger: 'manual' | 'shoot' | 'publish' };
+type TransitionRule = { from: ContentStatus; to: ContentStatus; trigger: 'manual' | 'approval' | 'shoot' | 'publish' };
 
 export const contentTransitionRules = [
   { from: 'IDEA', to: 'SCRIPTING', trigger: 'manual' },
-  { from: 'SCRIPTING', to: 'WAITING_APPROVAL', trigger: 'manual' },
-  { from: 'WAITING_APPROVAL', to: 'SCRIPTING', trigger: 'manual' },
-  { from: 'WAITING_APPROVAL', to: 'APPROVED', trigger: 'manual' },
+  { from: 'SCRIPTING', to: 'WAITING_APPROVAL', trigger: 'approval' },
+  { from: 'WAITING_APPROVAL', to: 'SCRIPTING', trigger: 'approval' },
+  { from: 'WAITING_APPROVAL', to: 'APPROVED', trigger: 'approval' },
+  { from: 'APPROVED', to: 'WAITING_APPROVAL', trigger: 'approval' },
   { from: 'APPROVED', to: 'WAITING_SHOOT', trigger: 'shoot' },
   { from: 'WAITING_SHOOT', to: 'APPROVED', trigger: 'shoot' },
   { from: 'WAITING_SHOOT', to: 'SHOT', trigger: 'shoot' },
@@ -41,7 +42,7 @@ export function assertContentTransition(from: ContentStatus, to: ContentStatus, 
   const rule = transitionRule(from, to);
   if (!rule) throw new ApiError(409, 'INVALID_STATUS_TRANSITION', `不允许从 ${from} 转换到 ${to}`);
   if (rule.trigger !== trigger)
-    throw new ApiError(409, 'BUSINESS_TRIGGER_REQUIRED', '该状态转换必须由对应的拍摄或发布业务事务触发');
+    throw new ApiError(409, 'BUSINESS_TRIGGER_REQUIRED', '该状态转换必须由对应的审核、拍摄或发布业务事务触发');
   return rule;
 }
 

@@ -6,6 +6,7 @@ import { aiInfrastructureService } from '@/lib/ai/service';
 import { memoryService } from '@/lib/memory/service';
 import { historyRetrievalService } from '@/lib/history/service';
 import { aiPlannerService } from '@/lib/planner/service';
+import { publicScriptReviewService, scriptApprovalService } from '@/lib/scripts/service';
 import { z } from 'zod';
 
 export const DEV_USER_COOKIE = 'contentos_dev_user_id';
@@ -59,4 +60,11 @@ export function currentHistoryRetrieval(request?: Request) {
 export function currentAiPlanner(request?: Request) {
   const { organizationId, userId } = localContextIds(request);
   return aiPlannerService(db, organizationId, userId);
+}
+export function currentScriptApproval(request?: Request) {
+  const { organizationId, userId } = localContextIds(request);
+  return scriptApprovalService(db, organizationId, userId);
+}
+export function publicScriptReview() {
+  return publicScriptReviewService(db);
 }

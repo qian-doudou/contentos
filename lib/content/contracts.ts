@@ -205,7 +205,7 @@ export const contentStatusLabels: Record<(typeof contentStatuses)[number], strin
   REVISION: '修改中', READY_TO_PUBLISH: '待发布', PUBLISHED: '已发布', REVIEWED: '已复盘',
 };
 export const contentStatusTriggerLabels: Record<(typeof contentStatusTriggers)[number], string> = {
-  manual: '手动', shoot: '拍摄事务', publish: '发布事务', system: '系统',
+  manual: '手动', approval: '审核事务', shoot: '拍摄事务', publish: '发布事务', system: '系统',
 };
 
 export type MonthlyPlan = z.infer<typeof monthlyPlanSchema>;

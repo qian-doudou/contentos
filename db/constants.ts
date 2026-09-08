@@ -21,7 +21,11 @@ export const contentStatuses = [
   'IDEA', 'SCRIPTING', 'WAITING_APPROVAL', 'APPROVED', 'WAITING_SHOOT', 'SHOT', 'EDITING',
   'WAITING_REVIEW', 'REVISION', 'READY_TO_PUBLISH', 'PUBLISHED', 'REVIEWED',
 ] as const;
-export const contentStatusTriggers = ['manual', 'shoot', 'publish', 'system'] as const;
+export const contentStatusTriggers = ['manual', 'approval', 'shoot', 'publish', 'system'] as const;
+export const scriptSourceTypes = ['ai', 'operator', 'client_revision', 'rewrite'] as const;
+export const approvalTypes = ['script', 'final_video'] as const;
+export const approvalStatuses = ['pending', 'approved', 'changes_requested', 'rejected', 'expired'] as const;
+export const approvalReviewerTypes = ['internal_user', 'external_client'] as const;
 export const memoryScopeTypes = ['brand', 'account'] as const;
 export const memoryTypes = ['brand', 'preference', 'content_pattern', 'performance_pattern', 'strategy', 'temporary'] as const;
 export const memoryStatuses = ['active', 'inactive', 'superseded', 'expired'] as const;

@@ -13,6 +13,7 @@ import {
   plannerSkillInputJsonSchema, plannerSkillOutputJsonSchema,
   qualitySkillInputJsonSchema, qualitySkillOutputJsonSchema,
 } from '../lib/planner/contracts';
+import { scriptGeneratorInputJsonSchema, scriptJsonOutputJsonSchema } from '../lib/scripts/contracts';
 
 export const DEMO_IDS = {
   organization: '0198f744-8e18-7ae2-a780-52a0e20c1931',
@@ -45,6 +46,7 @@ export const DEMO_IDS = {
 const duplicateJudgeV2VersionId = '0198f744-8e18-7ae2-a780-52a0e20c1b14';
 const contentPlannerV2VersionId = '0198f744-8e18-7ae2-a780-52a0e20c1b11';
 const qualityCheckerV2VersionId = '0198f744-8e18-7ae2-a780-52a0e20c1b18';
+const scriptGeneratorV2VersionId = '0198f744-8e18-7ae2-a780-52a0e20c1b12';
 const externalDedupKey = (value: string) =>
   `external_id:${createHash('sha256').update(value.trim().toLocaleLowerCase()).digest('hex')}`;
 
@@ -289,6 +291,37 @@ export function seedDemoData(options: { reset?: boolean } = {}) {
         createdBy: null, isDemo: false, createdAt: now }).onConflictDoNothing().run();
     }
 
+    const scriptGenerator = db.select().from(skills).where(and(
+      eq(skills.code, 'script_generator'), isNull(skills.organizationId),
+    )).get();
+    if (scriptGenerator?.currentVersion === 1) {
+      const v2 = {
+        systemPrompt: '你是 ContentOS 短视频脚本生成器。只能使用输入 Context 中已确认且仍有效的事实；Context 没有价格或活动时严禁自行生成具体价格或优惠。输出必须适合真实本地生活拍摄，避免夸张承诺，并严格返回符合输出 Schema 的 JSON。',
+        userPromptTemplate: '根据结构化 Content 与分层 Context 生成可拍摄脚本。不得要求用户重复输入已有品牌或账号资料：\n{{input_json}}',
+        inputSchemaJson: scriptGeneratorInputJsonSchema,
+        outputSchemaJson: scriptJsonOutputJsonSchema,
+        modelProfile: 'strong' as const,
+        pointCost: 3,
+      };
+      db.update(skills).set({
+        ...v2,
+        description: '使用当前 Content、有效 Memory 与统一 Context 生成结构化短视频脚本。',
+        currentVersion: 2,
+        updatedAt: now,
+      }).where(and(eq(skills.id, scriptGenerator.id), eq(skills.currentVersion, 1))).run();
+      db.insert(skillVersions).values({
+        id: scriptGeneratorV2VersionId,
+        organizationId: null,
+        skillId: scriptGenerator.id,
+        version: 2,
+        ...v2,
+        changeReason: '接入阶段十脚本生成与审核闭环协议',
+        createdBy: null,
+        isDemo: false,
+        createdAt: now,
+      }).onConflictDoNothing().run();
+    }
+
     const qualityChecker = db.select().from(skills).where(and(
       eq(skills.code, 'quality_checker'), isNull(skills.organizationId),
     )).get();
@@ -328,7 +361,7 @@ export function seedDemoData(options: { reset?: boolean } = {}) {
         id: DEMO_IDS.phaseSetting,
         organizationId: DEMO_IDS.organization,
         key: 'product.phase',
-        valueJson: JSON.stringify({ phase: 9, label: 'AI Content Planner' }),
+        valueJson: JSON.stringify({ phase: 10, label: 'Script Approval' }),
         isSecret: false,
         isDemo: true,
         createdAt: now,
@@ -336,7 +369,7 @@ export function seedDemoData(options: { reset?: boolean } = {}) {
       })
       .onConflictDoUpdate({
         target: [appSettings.organizationId, appSettings.key],
-        set: { valueJson: JSON.stringify({ phase: 9, label: 'AI Content Planner' }), updatedAt: now },
+        set: { valueJson: JSON.stringify({ phase: 10, label: 'Script Approval' }), updatedAt: now },
       })
       .run();
 
