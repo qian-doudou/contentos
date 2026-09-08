@@ -359,6 +359,10 @@ export function contentService(
           currentEditVersionId: null,
           activeApprovedEditVersionId: null,
           aiReviewStatus: null,
+          publishedAt: null,
+          externalId: null,
+          importDedupKey: null,
+          importBatchId: null,
           createdBy: userId,
         });
         db.insert(tables.contents).values(row).run();
@@ -391,6 +395,16 @@ export function contentService(
         db.update(tables.contents).set(row).where(and(
           eq(tables.contents.organizationId, organizationId), eq(tables.contents.id, id),
         )).run();
+        const embeddingFields = ['accountId', 'title', 'topic', 'angle', 'hookText', 'coreMessage'] as const;
+        if (embeddingFields.some(field => row[field] !== current[field])) {
+          db.update(tables.contentEmbeddings).set({
+            status: 'stale', updatedAt: row.updatedAt,
+          }).where(and(
+            eq(tables.contentEmbeddings.organizationId, organizationId),
+            eq(tables.contentEmbeddings.contentId, id),
+            eq(tables.contentEmbeddings.status, 'active'),
+          )).run();
+        }
         audit('content', row.id, 'content.updated');
         return row;
       });

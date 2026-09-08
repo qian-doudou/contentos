@@ -2,7 +2,8 @@ import { check, foreignKey, index, integer, real, sqliteTable, text, uniqueIndex
 import { sql } from 'drizzle-orm';
 import {
   accountTypes, aiLedgerTypes, aiUsageStatuses, businessStatuses, contentGoals, contentPriorities,
-  contentStatuses, contentStatusTriggers, contentTypes, cooperationStatuses, hookTypes, modelProfiles,
+  contentEmbeddingStatuses, contentImportDedupStrategies, contentImportFormats, contentImportStatuses,
+  contentStatuses, contentStatusTriggers, contentTypes, cooperationStatuses, historyRetrievalMethods, hookTypes, modelProfiles,
   memoryScopeTypes, memorySourceTypes, memoryStatuses, memoryTypes, priceConfigStatuses,
 } from './constants';
 import {
@@ -300,6 +301,34 @@ export const monthlyPlans = sqliteTable('monthly_plans', {
   )`),
 ]);
 
+export const contentImportBatches = sqliteTable('content_import_batches', {
+  id: text('id').primaryKey(),
+  organizationId: text('organization_id').notNull().references(() => organizations.id),
+  format: text('format', { enum: contentImportFormats }).notNull(),
+  dedupStrategy: text('dedup_strategy', { enum: contentImportDedupStrategies }).notNull(),
+  sourceHash: text('source_hash').notNull(),
+  previewJson: text('preview_json', { mode: 'json' }).$type<unknown>().notNull(),
+  status: text('status', { enum: contentImportStatuses }).notNull().default('previewed'),
+  totalRows: integer('total_rows').notNull(),
+  validRows: integer('valid_rows').notNull(),
+  duplicateRows: integer('duplicate_rows').notNull(),
+  invalidRows: integer('invalid_rows').notNull(),
+  committedRows: integer('committed_rows').notNull().default(0),
+  createdBy: text('created_by').notNull(),
+  isDemo: integer('is_demo', { mode: 'boolean' }).notNull().default(false),
+  committedAt: text('committed_at'),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+}, (t) => [
+  uniqueIndex('uq_content_import_batches_org_id').on(t.organizationId, t.id),
+  index('idx_content_import_batches_org_created').on(t.organizationId, t.createdAt),
+  foreignKey({ columns: [t.organizationId, t.createdBy], foreignColumns: [users.organizationId, users.id] }),
+  check('content_import_batches_format_valid', sql`${t.format} IN ('csv', 'json')`),
+  check('content_import_batches_dedup_valid', sql`${t.dedupStrategy} IN ('external_id', 'title_published_at', 'canonical')`),
+  check('content_import_batches_status_valid', sql`${t.status} IN ('previewed', 'committed', 'failed')`),
+  check('content_import_batches_counts_valid', sql`${t.totalRows} >= 0 AND ${t.validRows} >= 0 AND ${t.duplicateRows} >= 0 AND ${t.invalidRows} >= 0 AND ${t.committedRows} >= 0 AND ${t.validRows} + ${t.duplicateRows} + ${t.invalidRows} = ${t.totalRows}`),
+]);
+
 export const contents = sqliteTable('contents', {
   id: text('id').primaryKey(),
   organizationId: text('organization_id').notNull().references(() => organizations.id),
@@ -324,7 +353,11 @@ export const contents = sqliteTable('contents', {
   priority: text('priority', { enum: contentPriorities }).notNull().default('normal'),
   operatorId: text('operator_id').notNull(),
   plannedPublishDate: text('planned_publish_date'),
+  publishedAt: text('published_at'),
   deadline: text('deadline'),
+  externalId: text('external_id'),
+  importDedupKey: text('import_dedup_key'),
+  importBatchId: text('import_batch_id'),
   currentScriptVersionId: text('current_script_version_id'),
   activeApprovedScriptVersionId: text('active_approved_script_version_id'),
   currentEditVersionId: text('current_edit_version_id'),
@@ -336,9 +369,13 @@ export const contents = sqliteTable('contents', {
   updatedAt: text('updated_at').notNull(),
 }, (t) => [
   uniqueIndex('uq_contents_org_id').on(t.organizationId, t.id),
+  uniqueIndex('uq_contents_org_account_id').on(t.organizationId, t.accountId, t.id),
+  uniqueIndex('uq_contents_import_dedup').on(t.organizationId, t.accountId, t.importDedupKey)
+    .where(sql`${t.importDedupKey} IS NOT NULL`),
   index('idx_contents_org_account_status').on(t.organizationId, t.accountId, t.status),
   index('idx_contents_org_plan').on(t.organizationId, t.monthlyPlanId),
   index('idx_contents_org_publish_date').on(t.organizationId, t.plannedPublishDate),
+  index('idx_contents_org_account_published').on(t.organizationId, t.accountId, t.publishedAt),
   foreignKey({
     columns: [t.organizationId, t.clientId, t.brandId, t.storeId, t.accountId],
     foreignColumns: [accounts.organizationId, accounts.clientId, accounts.brandId, accounts.storeId, accounts.id],
@@ -346,6 +383,7 @@ export const contents = sqliteTable('contents', {
   foreignKey({ columns: [t.organizationId, t.accountId, t.monthlyPlanId], foreignColumns: [monthlyPlans.organizationId, monthlyPlans.accountId, monthlyPlans.id] }),
   foreignKey({ columns: [t.organizationId, t.operatorId], foreignColumns: [users.organizationId, users.id] }),
   foreignKey({ columns: [t.organizationId, t.createdBy], foreignColumns: [users.organizationId, users.id] }),
+  foreignKey({ columns: [t.organizationId, t.importBatchId], foreignColumns: [contentImportBatches.organizationId, contentImportBatches.id] }),
   check('contents_type_valid', sql`${t.contentType} IN ('persona', 'product', 'local', 'trust', 'conversion', 'education', 'process', 'customer_case', 'other')`),
   check('contents_goal_valid', sql`${t.contentGoal} IN ('exposure', 'followers', 'trust', 'click', 'conversion', 'gmv')`),
   check('contents_hook_valid', sql`${t.hookType} IN ('contrast', 'conflict', 'price', 'question', 'identity', 'local', 'result', 'mistake', 'secret', 'challenge', 'other')`),
@@ -375,6 +413,73 @@ export const contentStatusLogs = sqliteTable('content_status_logs', {
   check('content_status_logs_trigger_valid', sql`${t.triggerType} IN ('manual', 'shoot', 'publish', 'system')`),
 ]);
 
+export const contentEmbeddings = sqliteTable('content_embeddings', {
+  id: text('id').primaryKey(),
+  organizationId: text('organization_id').notNull().references(() => organizations.id),
+  accountId: text('account_id').notNull(),
+  contentId: text('content_id').notNull(),
+  embeddingModel: text('embedding_model').notNull(),
+  sourceHash: text('source_hash').notNull(),
+  vectorJson: text('vector_json', { mode: 'json' }).$type<Record<string, unknown>>().notNull(),
+  status: text('status', { enum: contentEmbeddingStatuses }).notNull(),
+  isDemo: integer('is_demo', { mode: 'boolean' }).notNull().default(false),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+}, (t) => [
+  uniqueIndex('uq_content_embeddings_org_id').on(t.organizationId, t.id),
+  uniqueIndex('uq_content_embeddings_active_content').on(t.organizationId, t.accountId, t.contentId)
+    .where(sql`${t.status} = 'active'`),
+  index('idx_content_embeddings_lookup').on(t.organizationId, t.accountId, t.status, t.embeddingModel),
+  foreignKey({ columns: [t.organizationId, t.accountId, t.contentId], foreignColumns: [contents.organizationId, contents.accountId, contents.id] }),
+  check('content_embeddings_status_valid', sql`${t.status} IN ('active', 'stale', 'failed')`),
+  check('content_embeddings_model_valid', sql`length(trim(${t.embeddingModel})) > 0`),
+  check('content_embeddings_hash_valid', sql`length(${t.sourceHash}) = 64`),
+  check('content_embeddings_vector_json_valid', sql`json_valid(${t.vectorJson})`),
+]);
+
+export const historyRetrievals = sqliteTable('history_retrievals', {
+  id: text('id').primaryKey(),
+  organizationId: text('organization_id').notNull().references(() => organizations.id),
+  accountId: text('account_id').notNull(),
+  candidateJson: text('candidate_json', { mode: 'json' }).$type<Record<string, unknown>>().notNull(),
+  retrievalMethod: text('retrieval_method', { enum: historyRetrievalMethods }).notNull(),
+  runId: text('run_id'),
+  createdBy: text('created_by').notNull(),
+  isDemo: integer('is_demo', { mode: 'boolean' }).notNull().default(false),
+  createdAt: text('created_at').notNull(),
+}, (t) => [
+  uniqueIndex('uq_history_retrievals_org_id').on(t.organizationId, t.id),
+  index('idx_history_retrievals_org_account_created').on(t.organizationId, t.accountId, t.createdAt),
+  foreignKey({ columns: [t.organizationId, t.accountId], foreignColumns: [accounts.organizationId, accounts.id] }),
+  foreignKey({ columns: [t.organizationId, t.runId], foreignColumns: [runs.organizationId, runs.id] }),
+  foreignKey({ columns: [t.organizationId, t.createdBy], foreignColumns: [users.organizationId, users.id] }),
+  check('history_retrievals_method_valid', sql`${t.retrievalMethod} IN ('embedding', 'fallback_bigram')`),
+]);
+
+export const historyRetrievalItems = sqliteTable('history_retrieval_items', {
+  id: text('id').primaryKey(),
+  organizationId: text('organization_id').notNull().references(() => organizations.id),
+  accountId: text('account_id').notNull(),
+  retrievalId: text('retrieval_id').notNull(),
+  contentId: text('content_id').notNull(),
+  similarity: real('similarity').notNull(),
+  retrievalMethod: text('retrieval_method', { enum: historyRetrievalMethods }).notNull(),
+  sourceHash: text('source_hash').notNull(),
+  rank: integer('rank').notNull(),
+  isDemo: integer('is_demo', { mode: 'boolean' }).notNull().default(false),
+  createdAt: text('created_at').notNull(),
+}, (t) => [
+  uniqueIndex('uq_history_retrieval_items_rank').on(t.organizationId, t.retrievalId, t.rank),
+  uniqueIndex('uq_history_retrieval_items_content').on(t.organizationId, t.retrievalId, t.contentId),
+  index('idx_history_retrieval_items_org_account').on(t.organizationId, t.accountId, t.createdAt),
+  foreignKey({ columns: [t.organizationId, t.retrievalId], foreignColumns: [historyRetrievals.organizationId, historyRetrievals.id] }),
+  foreignKey({ columns: [t.organizationId, t.accountId, t.contentId], foreignColumns: [contents.organizationId, contents.accountId, contents.id] }),
+  check('history_retrieval_items_similarity_valid', sql`${t.similarity} BETWEEN 0 AND 1`),
+  check('history_retrieval_items_method_valid', sql`${t.retrievalMethod} IN ('embedding', 'fallback_bigram')`),
+  check('history_retrieval_items_hash_valid', sql`length(${t.sourceHash}) = 64`),
+  check('history_retrieval_items_rank_valid', sql`${t.rank} BETWEEN 1 AND 10 AND typeof(${t.rank}) = 'integer'`),
+]);
+
 export type ClientRow = typeof clients.$inferSelect;
 export type ClientMemberRow = typeof clientMembers.$inferSelect;
 export type BrandRow = typeof brands.$inferSelect;
@@ -383,6 +488,10 @@ export type AccountRow = typeof accounts.$inferSelect;
 export type MonthlyPlanRow = typeof monthlyPlans.$inferSelect;
 export type ContentRow = typeof contents.$inferSelect;
 export type ContentStatusLogRow = typeof contentStatusLogs.$inferSelect;
+export type ContentImportBatchRow = typeof contentImportBatches.$inferSelect;
+export type ContentEmbeddingRow = typeof contentEmbeddings.$inferSelect;
+export type HistoryRetrievalRow = typeof historyRetrievals.$inferSelect;
+export type HistoryRetrievalItemRow = typeof historyRetrievalItems.$inferSelect;
 
 export const memories = sqliteTable('memories', {
   id: text('id').primaryKey(),

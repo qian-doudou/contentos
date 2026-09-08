@@ -46,6 +46,7 @@ export function ContentListPage() {
   }
   return <div className="space-y-6">
     <ContentHeading title="内容策划" description="用结构化字段管理选题、角度、钩子、本地元素和发布时间。">
+      <Button variant="outline" nativeButton={false} render={<Link href="/contents/import" />}>历史导入</Button>
       {data?.permissions.canWrite && <Button nativeButton={false} render={<Link href="/contents/new" />}><Plus />新建内容</Button>}
     </ContentHeading>
     <ContentNav />

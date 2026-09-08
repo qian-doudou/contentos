@@ -1,4 +1,5 @@
-import { and, eq } from 'drizzle-orm';
+import { createHash } from 'node:crypto';
+import { and, eq, isNull } from 'drizzle-orm';
 import { db, sqlite } from './client';
 import {
   accounts, appSettings, auditLogs, brands, clientMembers, clients, contents, monthlyPlans,
@@ -7,6 +8,7 @@ import {
 import { accountSchema, brandSchema, clientSchema, storeSchema, accountDefaults, brandDefaults, clientDefaults, storeDefaults } from '../lib/master-data/contracts';
 import { contentSchema, monthlyPlanSchema } from '../lib/content/contracts';
 import { memorySchema } from '../lib/memory/contracts';
+import { duplicateJudgeInputJsonSchema, duplicateJudgeOutputJsonSchema } from '../lib/history/contracts';
 
 export const DEMO_IDS = {
   organization: '0198f744-8e18-7ae2-a780-52a0e20c1931',
@@ -31,7 +33,14 @@ export const DEMO_IDS = {
   accountGoalsMemory: '0198f744-8e18-7ae2-a780-52a0e20c1984',
   accountContentStyleMemory: '0198f744-8e18-7ae2-a780-52a0e20c1985',
   accountForbiddenStyleMemory: '0198f744-8e18-7ae2-a780-52a0e20c1986',
+  historyContentFreshness: '0198f744-8e18-7ae2-a780-52a0e20c1963',
+  historyContentLocal: '0198f744-8e18-7ae2-a780-52a0e20c1964',
+  historyContentOffer: '0198f744-8e18-7ae2-a780-52a0e20c1965',
 } as const;
+
+const duplicateJudgeV2VersionId = '0198f744-8e18-7ae2-a780-52a0e20c1b14';
+const externalDedupKey = (value: string) =>
+  `external_id:${createHash('sha256').update(value.trim().toLocaleLowerCase()).digest('hex')}`;
 
 const systemSkillSeeds = [
   {
@@ -224,6 +233,37 @@ export function seedDemoData(options: { reset?: boolean } = {}) {
         .run();
     }
 
+    const duplicateJudge = db.select().from(skills).where(and(
+      eq(skills.code, 'duplicate_judge'), isNull(skills.organizationId),
+    )).get();
+    if (duplicateJudge?.currentVersion === 1) {
+      const v2 = {
+        systemPrompt: '你是 ContentOS 重复度判定器。必须综合 Topic、Angle、Hook、Core Message 与语义相似度；不得仅因 Topic 相同就判重复。similar_content_ids 只能引用输入候选。只返回符合输出 Schema 的 JSON。',
+        userPromptTemplate: '判断候选内容与本次检索到的历史内容是否重复：\n{{input_json}}',
+        inputSchemaJson: duplicateJudgeInputJsonSchema,
+        outputSchemaJson: duplicateJudgeOutputJsonSchema,
+        modelProfile: 'light' as const,
+        pointCost: 1,
+      };
+      db.update(skills).set({
+        ...v2,
+        description: '综合历史召回、结构化规则与语义结果判断内容重复度。',
+        currentVersion: 2,
+        updatedAt: now,
+      }).where(and(eq(skills.id, duplicateJudge.id), eq(skills.currentVersion, 1))).run();
+      db.insert(skillVersions).values({
+        id: duplicateJudgeV2VersionId,
+        organizationId: null,
+        skillId: duplicateJudge.id,
+        version: 2,
+        ...v2,
+        changeReason: '接入阶段八历史内容去重协议',
+        createdBy: null,
+        isDemo: false,
+        createdAt: now,
+      }).onConflictDoNothing().run();
+    }
+
     db.insert(organizationAiQuotas)
       .values({
         id: DEMO_IDS.aiQuota,
@@ -244,7 +284,7 @@ export function seedDemoData(options: { reset?: boolean } = {}) {
         id: DEMO_IDS.phaseSetting,
         organizationId: DEMO_IDS.organization,
         key: 'product.phase',
-        valueJson: JSON.stringify({ phase: 7, label: '长期记忆与上下文' }),
+        valueJson: JSON.stringify({ phase: 8, label: '历史内容检索与去重' }),
         isSecret: false,
         isDemo: true,
         createdAt: now,
@@ -252,7 +292,7 @@ export function seedDemoData(options: { reset?: boolean } = {}) {
       })
       .onConflictDoUpdate({
         target: [appSettings.organizationId, appSettings.key],
-        set: { valueJson: JSON.stringify({ phase: 7, label: '长期记忆与上下文' }), updatedAt: now },
+        set: { valueJson: JSON.stringify({ phase: 8, label: '历史内容检索与去重' }), updatedAt: now },
       })
       .run();
 
@@ -353,7 +393,11 @@ export function seedDemoData(options: { reset?: boolean } = {}) {
       priority: 'high',
       operatorId: DEMO_IDS.operator,
       plannedPublishDate: '2026-09-15T00:00:00.000Z',
+      publishedAt: null,
       deadline: '2026-09-12T00:00:00.000Z',
+      externalId: null,
+      importDedupKey: null,
+      importBatchId: null,
       currentScriptVersionId: null,
       activeApprovedScriptVersionId: null,
       currentEditVersionId: null,
@@ -380,6 +424,80 @@ export function seedDemoData(options: { reset?: boolean } = {}) {
     } else {
       db.insert(monthlyPlans).values(plan).onConflictDoNothing().run();
       db.insert(contents).values(content).onConflictDoNothing().run();
+    }
+
+    const historicalContents = [
+      {
+        id: DEMO_IDS.historyContentFreshness,
+        externalId: 'demo-history-fresh',
+        title: '老板教你看手切羊肉新不新鲜',
+        contentType: 'education' as const,
+        contentGoal: 'trust' as const,
+        topic: '怎么判断手切羊肉是否新鲜',
+        angle: '老板在后厨展示当天现切羊肉的纹理与颜色',
+        hookType: 'local' as const,
+        hookText: '这盘羊肉是不是当天切的，看这两处。',
+        coreMessage: '鲁西南本地羊肉当天现切，用真实细节建立信任。',
+        publishedAt: '2026-07-18T04:00:00.000Z',
+      },
+      {
+        id: DEMO_IDS.historyContentLocal,
+        externalId: 'demo-history-local',
+        title: '同样是铜锅涮，菏泽人先涮哪一盘',
+        contentType: 'local' as const,
+        contentGoal: 'exposure' as const,
+        topic: '铜锅涮的本地吃法',
+        angle: '从菏泽本地食客的点单顺序切入',
+        hookType: 'local' as const,
+        hookText: '菏泽人吃铜锅，第一盘真不是你想的那个。',
+        coreMessage: '用本地饮食习惯呈现传统铜锅涮的真实体验。',
+        publishedAt: '2026-08-02T04:00:00.000Z',
+      },
+      {
+        id: DEMO_IDS.historyContentOffer,
+        externalId: 'demo-history-offer',
+        title: '两个人吃铜锅怎么点更合适',
+        contentType: 'conversion' as const,
+        contentGoal: 'conversion' as const,
+        topic: '双人铜锅点单方案',
+        angle: '从客人预算和菜量搭配解释团购选择',
+        hookType: 'local' as const,
+        hookText: '两个人别盲目点一桌，这样搭配刚好。',
+        coreMessage: '根据人数与食量选择套餐，避免夸大价格优势。',
+        publishedAt: '2026-08-20T04:00:00.000Z',
+      },
+    ];
+    for (const item of historicalContents) {
+      const row = contentSchema.parse({
+        ...content,
+        ...item,
+        monthlyPlanId: null,
+        productText: '',
+        ctaType: '',
+        localElement: '菏泽本地口音与鲁西南饮食习惯',
+        peopleJson: ['老板'],
+        status: 'PUBLISHED',
+        priority: 'normal',
+        operatorId: DEMO_IDS.operator,
+        plannedPublishDate: item.publishedAt,
+        externalId: item.externalId,
+        importDedupKey: externalDedupKey(item.externalId),
+        importBatchId: null,
+        createdAt: item.publishedAt,
+        updatedAt: now,
+      });
+      db.insert(contents).values(row).onConflictDoNothing().run();
+      db.update(contents).set({
+        externalId: item.externalId,
+        importDedupKey: externalDedupKey(item.externalId),
+        plannedPublishDate: item.publishedAt,
+        publishedAt: item.publishedAt,
+        updatedAt: now,
+      }).where(and(
+        eq(contents.id, item.id),
+        eq(contents.organizationId, DEMO_IDS.organization),
+        eq(contents.isDemo, true),
+      )).run();
     }
 
     for (const memory of [

@@ -28,3 +28,9 @@ export const memoryStatuses = ['active', 'inactive', 'superseded', 'expired'] as
 export const memorySourceTypes = [
   'brand_profile', 'confirmed_preference', 'confirmed_performance', 'confirmed_strategy', 'manual',
 ] as const;
+export const contentImportFormats = ['csv', 'json'] as const;
+export const contentImportDedupStrategies = ['external_id', 'title_published_at', 'canonical'] as const;
+export const contentImportStatuses = ['previewed', 'committed', 'failed'] as const;
+export const contentEmbeddingStatuses = ['active', 'stale', 'failed'] as const;
+export const historyRetrievalMethods = ['embedding', 'fallback_bigram'] as const;
+export const duplicateLevels = ['new', 'mild', 'remixable', 'high'] as const;

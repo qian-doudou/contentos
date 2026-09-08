@@ -421,6 +421,8 @@ export function aiInfrastructureService(
     accountId?: string | null;
     subjectId?: string | null;
     persistBusinessResult?: (output: unknown) => void;
+    mockOutput?: unknown;
+    validateOutput?: (output: unknown) => void;
   }) {
     const skill = getSkillByCode(args.skillCode);
     if (!skill.enabled)
@@ -485,7 +487,7 @@ export function aiInfrastructureService(
         mockText:
           client.mode === 'mock'
             ? JSON.stringify(
-                deterministicMockFromSchema(
+                args.mockOutput ?? deterministicMockFromSchema(
                   skill.outputSchemaJson,
                   `[MOCK:${skill.code}]`,
                 ),
@@ -505,7 +507,11 @@ export function aiInfrastructureService(
           skill.outputSchemaJson,
         ).safeParse(parsedJson);
         if (!outputResult.success) issues = issueMessages(outputResult.error);
-        else parsedJson = outputResult.data;
+        else {
+          parsedJson = outputResult.data;
+          try { args.validateOutput?.(parsedJson); }
+          catch (error) { issues = [error instanceof Error ? error.message : '业务输出校验失败']; }
+        }
       }
     } catch (error) {
       issues = [error instanceof Error ? error.message : 'LLM 调用失败'];
@@ -819,6 +825,26 @@ export function aiInfrastructureService(
         clientId: input.clientId,
         accountId: input.accountId,
         persistBusinessResult: input.persistBusinessResult,
+      });
+    },
+    executeTest(input: {
+      skillCode: string;
+      data: Record<string, unknown>;
+      subjectId?: string | null;
+      clientId?: string | null;
+      accountId?: string | null;
+      mockOutput?: unknown;
+      validateOutput?: (output: unknown) => void;
+    }) {
+      return execute({
+        runType: 'test',
+        skillCode: input.skillCode,
+        input: input.data,
+        subjectId: input.subjectId,
+        clientId: input.clientId,
+        accountId: input.accountId,
+        mockOutput: input.mockOutput,
+        validateOutput: input.validateOutput,
       });
     },
     executeEval(input: {
