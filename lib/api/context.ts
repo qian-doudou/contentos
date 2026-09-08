@@ -5,6 +5,7 @@ import { contentService } from '@/lib/content/service';
 import { aiInfrastructureService } from '@/lib/ai/service';
 import { memoryService } from '@/lib/memory/service';
 import { historyRetrievalService } from '@/lib/history/service';
+import { aiPlannerService } from '@/lib/planner/service';
 import { z } from 'zod';
 
 export const DEV_USER_COOKIE = 'contentos_dev_user_id';
@@ -54,4 +55,8 @@ export function currentMemory(request?: Request) {
 export function currentHistoryRetrieval(request?: Request) {
   const { organizationId, userId } = localContextIds(request);
   return historyRetrievalService(db, organizationId, userId);
+}
+export function currentAiPlanner(request?: Request) {
+  const { organizationId, userId } = localContextIds(request);
+  return aiPlannerService(db, organizationId, userId);
 }

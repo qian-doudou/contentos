@@ -64,6 +64,13 @@
       "when": 1788828888695,
       "tag": "0008_slow_shape",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1788842579296,
+      "tag": "0009_flaky_scarlet_witch",
+      "breakpoints": true
     }
   ]
 }

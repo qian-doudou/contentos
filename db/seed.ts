@@ -9,6 +9,10 @@ import { accountSchema, brandSchema, clientSchema, storeSchema, accountDefaults,
 import { contentSchema, monthlyPlanSchema } from '../lib/content/contracts';
 import { memorySchema } from '../lib/memory/contracts';
 import { duplicateJudgeInputJsonSchema, duplicateJudgeOutputJsonSchema } from '../lib/history/contracts';
+import {
+  plannerSkillInputJsonSchema, plannerSkillOutputJsonSchema,
+  qualitySkillInputJsonSchema, qualitySkillOutputJsonSchema,
+} from '../lib/planner/contracts';
 
 export const DEMO_IDS = {
   organization: '0198f744-8e18-7ae2-a780-52a0e20c1931',
@@ -39,6 +43,8 @@ export const DEMO_IDS = {
 } as const;
 
 const duplicateJudgeV2VersionId = '0198f744-8e18-7ae2-a780-52a0e20c1b14';
+const contentPlannerV2VersionId = '0198f744-8e18-7ae2-a780-52a0e20c1b11';
+const qualityCheckerV2VersionId = '0198f744-8e18-7ae2-a780-52a0e20c1b18';
 const externalDedupKey = (value: string) =>
   `external_id:${createHash('sha256').update(value.trim().toLocaleLowerCase()).digest('hex')}`;
 
@@ -264,6 +270,44 @@ export function seedDemoData(options: { reset?: boolean } = {}) {
       }).onConflictDoNothing().run();
     }
 
+    const contentPlanner = db.select().from(skills).where(and(
+      eq(skills.code, 'content_planner'), isNull(skills.organizationId),
+    )).get();
+    if (contentPlanner?.currentVersion === 1) {
+      const v2 = {
+        systemPrompt: '你是 ContentOS AI Content Planner。只能使用输入 Context 中已经确认且仍有效的品牌、账号、产品、价格与活动事实；Context 没有价格时严禁生成具体价格。严格使用稳定英文枚举，只返回符合输出 Schema 的 JSON。每个候选必须在 Angle、Hook 或 Core Message 上有清晰差异。',
+        userPromptTemplate: '根据当前账号 Context、月度计划缺口和本次简要请求生成候选。用户不会重复填写已有品牌资料：\n{{input_json}}',
+        inputSchemaJson: plannerSkillInputJsonSchema,
+        outputSchemaJson: plannerSkillOutputJsonSchema,
+        modelProfile: 'standard' as const,
+        pointCost: 2,
+      };
+      db.update(skills).set({ ...v2, description: '使用已确认 Context 与计划缺口生成结构化内容候选。', currentVersion: 2, updatedAt: now })
+        .where(and(eq(skills.id, contentPlanner.id), eq(skills.currentVersion, 1))).run();
+      db.insert(skillVersions).values({ id: contentPlannerV2VersionId, organizationId: null,
+        skillId: contentPlanner.id, version: 2, ...v2, changeReason: '接入阶段九 AI Content Planner 协议',
+        createdBy: null, isDemo: false, createdAt: now }).onConflictDoNothing().run();
+    }
+
+    const qualityChecker = db.select().from(skills).where(and(
+      eq(skills.code, 'quality_checker'), isNull(skills.organizationId),
+    )).get();
+    if (qualityChecker?.currentVersion === 1) {
+      const v2 = {
+        systemPrompt: '你是 ContentOS 内容质量检查器。检查禁用主题与风格、动态事实来源、结构化枚举和月度计划严重冲突。不得修改候选，也不得放行无来源价格或活动事实。只返回符合输出 Schema 的 JSON，candidate_id 只能引用输入候选。',
+        userPromptTemplate: '检查以下候选与确定性约束：\n{{input_json}}',
+        inputSchemaJson: qualitySkillInputJsonSchema,
+        outputSchemaJson: qualitySkillOutputJsonSchema,
+        modelProfile: 'light' as const,
+        pointCost: 1,
+      };
+      db.update(skills).set({ ...v2, description: '检查 Planner 候选的事实来源、禁用项、枚举与计划冲突。', currentVersion: 2, updatedAt: now })
+        .where(and(eq(skills.id, qualityChecker.id), eq(skills.currentVersion, 1))).run();
+      db.insert(skillVersions).values({ id: qualityCheckerV2VersionId, organizationId: null,
+        skillId: qualityChecker.id, version: 2, ...v2, changeReason: '接入阶段九 Planner 质量门禁协议',
+        createdBy: null, isDemo: false, createdAt: now }).onConflictDoNothing().run();
+    }
+
     db.insert(organizationAiQuotas)
       .values({
         id: DEMO_IDS.aiQuota,
@@ -284,7 +328,7 @@ export function seedDemoData(options: { reset?: boolean } = {}) {
         id: DEMO_IDS.phaseSetting,
         organizationId: DEMO_IDS.organization,
         key: 'product.phase',
-        valueJson: JSON.stringify({ phase: 8, label: '历史内容检索与去重' }),
+        valueJson: JSON.stringify({ phase: 9, label: 'AI Content Planner' }),
         isSecret: false,
         isDemo: true,
         createdAt: now,
@@ -292,7 +336,7 @@ export function seedDemoData(options: { reset?: boolean } = {}) {
       })
       .onConflictDoUpdate({
         target: [appSettings.organizationId, appSettings.key],
-        set: { valueJson: JSON.stringify({ phase: 8, label: '历史内容检索与去重' }), updatedAt: now },
+        set: { valueJson: JSON.stringify({ phase: 9, label: 'AI Content Planner' }), updatedAt: now },
       })
       .run();
 

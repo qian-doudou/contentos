@@ -190,7 +190,7 @@ function batchView(row: typeof tables.contentImportBatches.$inferSelect) {
   return contentImportBatchSchema.omit({ previewJson: true }).parse(row);
 }
 
-function deterministicJudgment(
+export function deterministicJudgment(
   items: Array<z.infer<typeof historyRetrievalItemSchema>>,
 ): DuplicateJudgeOutput {
   const top = items[0];
@@ -499,6 +499,76 @@ export function historyRetrievalService(
           error instanceof Error ? error.message : 'Embedding 调用失败',
       };
     }
+  };
+
+  const retrieve = async (candidate: HistoryCandidate, runId: string | null) => {
+    const account = accountById(candidate.accountId);
+    if (runId) {
+      permissions.requireClientWrite(account.clientId);
+      const run = db.select({ id: tables.runs.id }).from(tables.runs).where(and(
+        eq(tables.runs.organizationId, organizationId),
+        eq(tables.runs.id, runId),
+        eq(tables.runs.runType, 'production'),
+      )).get();
+      if (!run) throw missing();
+    }
+    const histories = db.select().from(tables.contents).where(and(
+      eq(tables.contents.organizationId, organizationId),
+      eq(tables.contents.accountId, account.id),
+      or(eq(tables.contents.status, 'PUBLISHED'), eq(tables.contents.status, 'REVIEWED')),
+    )).orderBy(desc(tables.contents.publishedAt), desc(tables.contents.createdAt)).all();
+    const resolved = await resolveRetrievalVectors(candidate, histories);
+    const scored = histories.map((row) => {
+      const semantic = roundedScore(vectorSimilarity(resolved.candidateVector, resolved.vectors.get(row.id)!));
+      const topic = roundedScore(textSimilarity(candidate.topic, row.topic));
+      const angle = roundedScore(textSimilarity(candidate.angle, row.angle));
+      const hook = roundedScore(textSimilarity(candidate.hookText, row.hookText));
+      const coreMessage = roundedScore(textSimilarity(candidate.coreMessage, row.coreMessage));
+      const combined = roundedScore(semantic * 0.35 + topic * 0.1 + angle * 0.25 + hook * 0.15 + coreMessage * 0.15);
+      return { row, semantic, ruleScore: { semantic, topic, angle, hook, coreMessage, combined } };
+    }).sort((left, right) => right.semantic - left.semantic ||
+      (right.row.publishedAt ?? '').localeCompare(left.row.publishedAt ?? '') || left.row.id.localeCompare(right.row.id)).slice(0, 10);
+    const judgeCandidates = [...scored].filter((item) => item.ruleScore.combined >= 0.2 || item.semantic >= 0.35)
+      .sort((left, right) => right.ruleScore.combined - left.ruleScore.combined || right.semantic - left.semantic).slice(0, 5);
+    const judgeIds = new Set(judgeCandidates.map((item) => item.row.id));
+    const top10 = scored.map((item, index) => historyRetrievalItemSchema.parse({
+      contentId: item.row.id, title: item.row.title, contentType: item.row.contentType,
+      contentGoal: item.row.contentGoal, topic: item.row.topic, angle: item.row.angle,
+      hookText: item.row.hookText, coreMessage: item.row.coreMessage,
+      publishedAt: item.row.publishedAt, similarity: item.semantic, retrievalMethod: resolved.method,
+      sourceHash: contentSourceHash(item.row), rank: index + 1, ruleScore: item.ruleScore,
+      sentToJudge: judgeIds.has(item.row.id),
+    }));
+    const retrievalId = crypto.randomUUID();
+    const createdAt = timestamp();
+    db.transaction(() => {
+      db.insert(tables.historyRetrievals).values({
+        id: retrievalId, organizationId, accountId: account.id, candidateJson: candidate,
+        retrievalMethod: resolved.method, runId, createdBy: userId, isDemo, createdAt,
+      }).run();
+      if (top10.length) db.insert(tables.historyRetrievalItems).values(top10.map((item) => ({
+        id: crypto.randomUUID(), organizationId, accountId: account.id, retrievalId,
+        contentId: item.contentId, similarity: item.similarity, retrievalMethod: item.retrievalMethod,
+        sourceHash: item.sourceHash, rank: item.rank, isDemo, createdAt,
+      }))).run();
+      audit('history_retrieval', retrievalId, 'history_retrieval.completed');
+    });
+    const judgeInput = judgeCandidates.map((item) => ({
+      content_id: item.row.id, title: item.row.title, topic: item.row.topic, angle: item.row.angle,
+      hook_text: item.row.hookText, core_message: item.row.coreMessage,
+      semantic_similarity: item.semantic, rule_score: item.ruleScore.combined,
+    }));
+    return {
+      retrievalId, account, candidate, top10, judgeInput,
+      judgeInputContentIds: [...judgeIds],
+      fallbackJudgment: deterministicJudgment(top10.filter((item) => item.sentToJudge)),
+      fallbackReason: resolved.fallbackReason,
+      embedding: {
+        ...embeddingClient.publicConfig,
+        mode: resolved.method === 'embedding' ? ('live' as const) : ('fallback' as const),
+        model: resolved.model,
+      },
+    };
   };
 
   return {
@@ -835,153 +905,16 @@ export function historyRetrievalService(
     async dedupTest(input: unknown) {
       permissions.require('ai.test');
       const candidate = historyCandidateSchema.parse(input);
-      const account = accountById(candidate.accountId);
-      const histories = db
-        .select()
-        .from(tables.contents)
-        .where(
-          and(
-            eq(tables.contents.organizationId, organizationId),
-            eq(tables.contents.accountId, account.id),
-            or(
-              eq(tables.contents.status, 'PUBLISHED'),
-              eq(tables.contents.status, 'REVIEWED'),
-            ),
-          ),
-        )
-        .orderBy(
-          desc(tables.contents.publishedAt),
-          desc(tables.contents.createdAt),
-        )
-        .all();
-      const resolved = await resolveRetrievalVectors(candidate, histories);
-      const scored = histories
-        .map((row) => {
-          const semantic = roundedScore(
-            vectorSimilarity(
-              resolved.candidateVector,
-              resolved.vectors.get(row.id)!,
-            ),
-          );
-          const topic = roundedScore(
-            textSimilarity(candidate.topic, row.topic),
-          );
-          const angle = roundedScore(
-            textSimilarity(candidate.angle, row.angle),
-          );
-          const hook = roundedScore(
-            textSimilarity(candidate.hookText, row.hookText),
-          );
-          const coreMessage = roundedScore(
-            textSimilarity(candidate.coreMessage, row.coreMessage),
-          );
-          const combined = roundedScore(
-            semantic * 0.35 +
-              topic * 0.1 +
-              angle * 0.25 +
-              hook * 0.15 +
-              coreMessage * 0.15,
-          );
-          return {
-            row,
-            semantic,
-            ruleScore: {
-              semantic,
-              topic,
-              angle,
-              hook,
-              coreMessage,
-              combined,
-            },
-          };
-        })
-        .sort(
-          (left, right) =>
-            right.semantic - left.semantic ||
-            (right.row.publishedAt ?? '').localeCompare(
-              left.row.publishedAt ?? '',
-            ) ||
-            left.row.id.localeCompare(right.row.id),
-        )
-        .slice(0, 10);
-      const judgeCandidates = [...scored]
-        .filter(
-          (item) => item.ruleScore.combined >= 0.2 || item.semantic >= 0.35,
-        )
-        .sort(
-          (left, right) =>
-            right.ruleScore.combined - left.ruleScore.combined ||
-            right.semantic - left.semantic,
-        )
-        .slice(0, 5);
-      const judgeIds = new Set(judgeCandidates.map((item) => item.row.id));
-      const top10 = scored.map((item, index) =>
-        historyRetrievalItemSchema.parse({
-          contentId: item.row.id,
-          title: item.row.title,
-          contentType: item.row.contentType,
-          contentGoal: item.row.contentGoal,
-          topic: item.row.topic,
-          angle: item.row.angle,
-          hookText: item.row.hookText,
-          coreMessage: item.row.coreMessage,
-          publishedAt: item.row.publishedAt,
-          similarity: item.semantic,
-          retrievalMethod: resolved.method,
-          sourceHash: contentSourceHash(item.row),
-          rank: index + 1,
-          ruleScore: item.ruleScore,
-          sentToJudge: judgeIds.has(item.row.id),
-        }),
-      );
-      const retrievalId = crypto.randomUUID();
-      const createdAt = timestamp();
-      db.transaction(() => {
-        db.insert(tables.historyRetrievals)
-          .values({
-            id: retrievalId,
-            organizationId,
-            accountId: account.id,
-            candidateJson: candidate,
-            retrievalMethod: resolved.method,
-            runId: null,
-            createdBy: userId,
-            isDemo,
-            createdAt,
-          })
-          .run();
-        if (top10.length)
-          db.insert(tables.historyRetrievalItems)
-            .values(
-              top10.map((item) => ({
-                id: crypto.randomUUID(),
-                organizationId,
-                accountId: account.id,
-                retrievalId,
-                contentId: item.contentId,
-                similarity: item.similarity,
-                retrievalMethod: item.retrievalMethod,
-                sourceHash: item.sourceHash,
-                rank: item.rank,
-                isDemo,
-                createdAt,
-              })),
-            )
-            .run();
-        audit('history_retrieval', retrievalId, 'history_retrieval.completed');
-      });
-
-      const fallbackJudgment = deterministicJudgment(
-        top10.filter((item) => item.sentToJudge),
-      );
+      const retrieval = await retrieve(candidate, null);
+      const { account, top10, retrievalId, fallbackJudgment } = retrieval;
       let judgment = fallbackJudgment;
-      let fallbackUsed = judgeCandidates.length === 0;
+      let fallbackUsed = retrieval.judgeInput.length === 0;
       let fallbackReason =
-        resolved.fallbackReason ??
-        (judgeCandidates.length === 0 ? '没有历史内容通过规则初筛' : null);
+        retrieval.fallbackReason ??
+        (retrieval.judgeInput.length === 0 ? '没有历史内容通过规则初筛' : null);
       let run: z.infer<typeof dedupTestResultSchema>['run'] = null;
-      if (judgeCandidates.length) {
-        const allowedIds = new Set(judgeCandidates.map((item) => item.row.id));
+      if (retrieval.judgeInput.length) {
+        const allowedIds = new Set(retrieval.judgeInputContentIds);
         const testResult = await aiService.executeTest({
           skillCode: 'duplicate_judge',
           subjectId: retrievalId,
@@ -997,16 +930,7 @@ export function historyRetrievalService(
               hook_text: candidate.hookText,
               core_message: candidate.coreMessage,
             },
-            similar_contents: judgeCandidates.map((item) => ({
-              content_id: item.row.id,
-              title: item.row.title,
-              topic: item.row.topic,
-              angle: item.row.angle,
-              hook_text: item.row.hookText,
-              core_message: item.row.coreMessage,
-              semantic_similarity: item.semantic,
-              rule_score: item.ruleScore.combined,
-            })),
+            similar_contents: retrieval.judgeInput,
           },
           mockOutput: fallbackJudgment,
           validateOutput(output) {
@@ -1049,20 +973,18 @@ export function historyRetrievalService(
         retrievalId,
         candidate,
         top10,
-        judgeInputContentIds: [...judgeIds],
+        judgeInputContentIds: retrieval.judgeInputContentIds,
         judgment,
         fallbackUsed,
         fallbackReason,
-        embedding: {
-          ...embeddingClient.publicConfig,
-          mode:
-            resolved.method === 'embedding'
-              ? ('live' as const)
-              : ('fallback' as const),
-          model: resolved.model,
-        },
+        embedding: retrieval.embedding,
         run,
       });
+    },
+
+    async retrieveForRun(input: unknown, runId: string) {
+      const candidate = historyCandidateSchema.parse(input);
+      return retrieve(candidate, z.uuid().parse(runId));
     },
   };
 }

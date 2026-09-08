@@ -5,6 +5,7 @@ import {
   contentEmbeddingStatuses, contentImportDedupStrategies, contentImportFormats, contentImportStatuses,
   contentStatuses, contentStatusTriggers, contentTypes, cooperationStatuses, historyRetrievalMethods, hookTypes, modelProfiles,
   memoryScopeTypes, memorySourceTypes, memoryStatuses, memoryTypes, priceConfigStatuses,
+  plannerCandidateStatuses, plannerQualityStatuses, plannerSessionStatuses,
 } from './constants';
 import {
   organizationStatuses,
@@ -557,6 +558,92 @@ export const contextSnapshots = sqliteTable('context_snapshots', {
 
 export type MemoryRow = typeof memories.$inferSelect;
 export type ContextSnapshotRow = typeof contextSnapshots.$inferSelect;
+
+export const plannerSessions = sqliteTable('planner_sessions', {
+  id: text('id').primaryKey(),
+  organizationId: text('organization_id').notNull().references(() => organizations.id),
+  runId: text('run_id').notNull(),
+  accountId: text('account_id').notNull(),
+  monthlyPlanId: text('monthly_plan_id'),
+  contextSnapshotId: text('context_snapshot_id'),
+  plannedCount: integer('planned_count').notNull(),
+  shootDate: text('shoot_date'),
+  primaryGoal: text('primary_goal', { enum: contentGoals }).notNull(),
+  specialRequirements: text('special_requirements'),
+  planningSummary: text('planning_summary').notNull().default(''),
+  status: text('status', { enum: plannerSessionStatuses }).notNull().default('generating'),
+  plannerSkillVersion: integer('planner_skill_version').notNull(),
+  plannerPointCost: integer('planner_point_cost').notNull(),
+  selectedCount: integer('selected_count').notNull().default(0),
+  createdBy: text('created_by').notNull(),
+  isDemo: integer('is_demo', { mode: 'boolean' }).notNull().default(false),
+  completedAt: text('completed_at'),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+}, (t) => [
+  uniqueIndex('uq_planner_sessions_org_id').on(t.organizationId, t.id),
+  uniqueIndex('uq_planner_sessions_org_run').on(t.organizationId, t.runId),
+  index('idx_planner_sessions_org_account_created').on(t.organizationId, t.accountId, t.createdAt),
+  foreignKey({ columns: [t.organizationId, t.runId], foreignColumns: [runs.organizationId, runs.id] }),
+  foreignKey({ columns: [t.organizationId, t.accountId], foreignColumns: [accounts.organizationId, accounts.id] }),
+  foreignKey({ columns: [t.organizationId, t.accountId, t.monthlyPlanId], foreignColumns: [monthlyPlans.organizationId, monthlyPlans.accountId, monthlyPlans.id] }),
+  foreignKey({ columns: [t.organizationId, t.contextSnapshotId], foreignColumns: [contextSnapshots.organizationId, contextSnapshots.id] }),
+  foreignKey({ columns: [t.organizationId, t.createdBy], foreignColumns: [users.organizationId, users.id] }),
+  check('planner_sessions_count_valid', sql`${t.plannedCount} BETWEEN 1 AND 20 AND typeof(${t.plannedCount}) = 'integer'`),
+  check('planner_sessions_point_cost_valid', sql`${t.plannerPointCost} >= 0 AND typeof(${t.plannerPointCost}) = 'integer'`),
+  check('planner_sessions_selected_count_valid', sql`${t.selectedCount} BETWEEN 0 AND ${t.plannedCount}`),
+  check('planner_sessions_status_valid', sql`${t.status} IN ('generating', 'awaiting_selection', 'completed', 'failed')`),
+  check('planner_sessions_goal_valid', sql`${t.primaryGoal} IN ('exposure', 'followers', 'trust', 'click', 'conversion', 'gmv')`),
+]);
+
+export const plannerCandidates = sqliteTable('planner_candidates', {
+  id: text('id').primaryKey(),
+  organizationId: text('organization_id').notNull().references(() => organizations.id),
+  plannerSessionId: text('planner_session_id').notNull(),
+  accountId: text('account_id').notNull(),
+  sourceRunId: text('source_run_id').notNull(),
+  sequence: integer('sequence').notNull(),
+  revision: integer('revision').notNull().default(1),
+  replacesCandidateId: text('replaces_candidate_id'),
+  title: text('title').notNull(),
+  contentType: text('content_type', { enum: contentTypes }).notNull(),
+  contentGoal: text('content_goal', { enum: contentGoals }).notNull(),
+  topic: text('topic').notNull(),
+  angle: text('angle').notNull(),
+  hookType: text('hook_type', { enum: hookTypes }).notNull(),
+  hookIdea: text('hook_idea').notNull(),
+  coreMessage: text('core_message').notNull(),
+  recommendedReason: text('recommended_reason').notNull(),
+  duplicateLevel: text('duplicate_level', { enum: ['new', 'mild', 'remixable', 'high'] }).notNull(),
+  similarContentsJson: text('similar_contents_json', { mode: 'json' }).$type<unknown[]>().notNull().default([]),
+  duplicateReason: text('duplicate_reason').notNull(),
+  alternativeAnglesJson: text('alternative_angles_json', { mode: 'json' }).$type<string[]>().notNull().default([]),
+  qualityStatus: text('quality_status', { enum: plannerQualityStatuses }).notNull(),
+  qualityIssuesJson: text('quality_issues_json', { mode: 'json' }).$type<unknown[]>().notNull().default([]),
+  selectable: integer('selectable', { mode: 'boolean' }).notNull(),
+  status: text('status', { enum: plannerCandidateStatuses }).notNull().default('active'),
+  persistedContentId: text('persisted_content_id'),
+  isDemo: integer('is_demo', { mode: 'boolean' }).notNull().default(false),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+}, (t) => [
+  uniqueIndex('uq_planner_candidates_org_id').on(t.organizationId, t.id),
+  uniqueIndex('uq_planner_candidates_active_sequence').on(t.organizationId, t.plannerSessionId, t.sequence).where(sql`${t.status} = 'active'`),
+  index('idx_planner_candidates_org_session').on(t.organizationId, t.plannerSessionId, t.sequence),
+  foreignKey({ columns: [t.organizationId, t.plannerSessionId], foreignColumns: [plannerSessions.organizationId, plannerSessions.id] }),
+  foreignKey({ columns: [t.organizationId, t.accountId], foreignColumns: [accounts.organizationId, accounts.id] }),
+  foreignKey({ columns: [t.organizationId, t.sourceRunId], foreignColumns: [runs.organizationId, runs.id] }),
+  foreignKey({ columns: [t.organizationId, t.replacesCandidateId], foreignColumns: [t.organizationId, t.id] }),
+  foreignKey({ columns: [t.organizationId, t.persistedContentId], foreignColumns: [contents.organizationId, contents.id] }),
+  check('planner_candidates_sequence_valid', sql`${t.sequence} >= 0 AND typeof(${t.sequence}) = 'integer'`),
+  check('planner_candidates_revision_valid', sql`${t.revision} >= 1 AND typeof(${t.revision}) = 'integer'`),
+  check('planner_candidates_status_valid', sql`${t.status} IN ('active', 'replaced', 'persisted', 'dismissed')`),
+  check('planner_candidates_quality_valid', sql`${t.qualityStatus} IN ('passed', 'warning', 'blocked')`),
+  check('planner_candidates_duplicate_valid', sql`${t.duplicateLevel} IN ('new', 'mild', 'remixable', 'high')`),
+]);
+
+export type PlannerSessionRow = typeof plannerSessions.$inferSelect;
+export type PlannerCandidateRow = typeof plannerCandidates.$inferSelect;
 
 export const skills = sqliteTable(
   'skills',

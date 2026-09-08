@@ -33,4 +33,7 @@ export const contentImportDedupStrategies = ['external_id', 'title_published_at'
 export const contentImportStatuses = ['previewed', 'committed', 'failed'] as const;
 export const contentEmbeddingStatuses = ['active', 'stale', 'failed'] as const;
 export const historyRetrievalMethods = ['embedding', 'fallback_bigram'] as const;
+export const plannerSessionStatuses = ['generating', 'awaiting_selection', 'completed', 'failed'] as const;
+export const plannerCandidateStatuses = ['active', 'replaced', 'persisted', 'dismissed'] as const;
+export const plannerQualityStatuses = ['passed', 'warning', 'blocked'] as const;
 export const duplicateLevels = ['new', 'mild', 'remixable', 'high'] as const;

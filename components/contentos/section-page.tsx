@@ -47,7 +47,7 @@ export function SectionPage({ config }: { config: SectionConfig }) {
     <div className="space-y-6">
       <section className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div><p className="eyebrow">{config.eyebrow}</p><h1 className="page-title">{config.title}</h1><p className="page-description">{config.description}</p></div>
-        <Badge className={`h-7 px-3 ${isAi ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`} variant="secondary">{isAi ? '检索与去重已可用' : '后续阶段实现'}</Badge>
+        <Badge className={`h-7 px-3 ${isAi ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`} variant="secondary">{isAi ? 'Content Planner 已可用' : '后续阶段实现'}</Badge>
       </section>
 
       {isContents ? <EmptyKanban /> : (
@@ -55,8 +55,8 @@ export function SectionPage({ config }: { config: SectionConfig }) {
           <CardHeader className="border-b"><div><p className="section-kicker">后续阶段</p><CardTitle className="mt-1 text-xl">{config.entity}</CardTitle><CardDescription className="mt-1">当前阶段仅保留统一入口、状态与数据边界。</CardDescription></div><Badge variant="outline">0 条记录</Badge></CardHeader>
           <CardContent className="flex min-h-80 items-center justify-center">
             <Empty className="max-w-xl border border-dashed border-slate-200 bg-slate-50/70">
-              <EmptyHeader><EmptyMedia variant="icon">{isAi ? <Sparkles /> : <Layers3 />}</EmptyMedia><EmptyTitle>{isAi ? 'AI 上下文与历史检索' : `${config.entity}暂无数据`}</EmptyTitle><EmptyDescription>{isAi ? '管理长期记忆，或用同账号历史 Top10、结构化规则与 duplicate_judge 测试候选内容。' : '该模块不在当前阶段实现范围内。后续接入时将沿用 organization_id、多租户数据隔离与统一 Run 追踪。'}</EmptyDescription></EmptyHeader>
-              {isAi ? <div className="flex flex-wrap gap-2"><Button variant="outline" nativeButton={false} render={<Link href="/ai/memory" />}>打开 Memory 管理</Button><Button nativeButton={false} render={<Link href="/ai/dedup-test" />}>打开去重测试<ArrowRight data-icon="inline-end" /></Button></div> : <Button variant="outline" nativeButton={false} render={<Link href="/" />}>返回工作台<ArrowRight data-icon="inline-end" /></Button>}
+              <EmptyHeader><EmptyMedia variant="icon">{isAi ? <Sparkles /> : <Layers3 />}</EmptyMedia><EmptyTitle>{isAi ? 'AI 内容策划工作台' : `${config.entity}暂无数据`}</EmptyTitle><EmptyDescription>{isAi ? '从账号 Context 与月度计划缺口生成候选，逐条执行历史检索、重复判断和质量门禁，人工选择后才写入内容库。' : '该模块不在当前阶段实现范围内。后续接入时将沿用 organization_id、多租户数据隔离与统一 Run 追踪。'}</EmptyDescription></EmptyHeader>
+              {isAi ? <div className="flex flex-wrap gap-2"><Button nativeButton={false} render={<Link href="/ai/planner" />}>打开 Content Planner<ArrowRight data-icon="inline-end" /></Button><Button variant="outline" nativeButton={false} render={<Link href="/ai/memory" />}>Memory</Button><Button variant="outline" nativeButton={false} render={<Link href="/ai/dedup-test" />}>去重测试</Button></div> : <Button variant="outline" nativeButton={false} render={<Link href="/" />}>返回工作台<ArrowRight data-icon="inline-end" /></Button>}
             </Empty>
           </CardContent>
         </Card>
