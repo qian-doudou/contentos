@@ -90,7 +90,7 @@ describe('deterministic content state machine', () => {
       'IDEA>SCRIPTING', 'SCRIPTING>WAITING_APPROVAL', 'WAITING_APPROVAL>SCRIPTING', 'WAITING_APPROVAL>APPROVED', 'APPROVED>WAITING_APPROVAL',
       'APPROVED>WAITING_SHOOT', 'WAITING_SHOOT>APPROVED', 'WAITING_SHOOT>SHOT', 'SHOT>EDITING',
       'EDITING>WAITING_REVIEW', 'WAITING_REVIEW>REVISION', 'REVISION>WAITING_REVIEW',
-      'WAITING_REVIEW>READY_TO_PUBLISH', 'READY_TO_PUBLISH>PUBLISHED', 'PUBLISHED>REVIEWED',
+      'WAITING_REVIEW>READY_TO_PUBLISH', 'READY_TO_PUBLISH>WAITING_REVIEW', 'READY_TO_PUBLISH>PUBLISHED', 'PUBLISHED>REVIEWED',
     ];
     expect(contentTransitionRules.map(rule => `${rule.from}>${rule.to}`)).toEqual(expected);
     for (const from of contentStatuses) for (const to of contentStatuses) {
@@ -156,6 +156,8 @@ describe('transactional transition service', () => {
       ['SCRIPTING', 'WAITING_APPROVAL'], ['WAITING_APPROVAL', 'SCRIPTING'], ['WAITING_APPROVAL', 'APPROVED'],
       ['APPROVED', 'WAITING_APPROVAL'],
       ['APPROVED', 'WAITING_SHOOT'], ['WAITING_SHOOT', 'APPROVED'], ['WAITING_SHOOT', 'SHOT'],
+      ['SHOT', 'EDITING'], ['EDITING', 'WAITING_REVIEW'], ['WAITING_REVIEW', 'REVISION'],
+      ['REVISION', 'WAITING_REVIEW'], ['WAITING_REVIEW', 'READY_TO_PUBLISH'], ['READY_TO_PUBLISH', 'WAITING_REVIEW'],
       ['READY_TO_PUBLISH', 'PUBLISHED'],
     ] as const) {
       db.update(contents).set({ status: from }).where(eq(contents.id, data.content.id)).run();

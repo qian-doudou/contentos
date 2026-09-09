@@ -18,7 +18,7 @@ describe('SQLite migration', () => {
     expect(sqlite.prepare("select count(*) as value from sqlite_schema where type = 'table' and name = 'skills'").get()).toEqual({ value: 1 });
   });
 
-  it('creates every phase-eleven table with organization scope', () => {
+  it('creates every phase-twelve table with organization scope', () => {
     sqlite = new Database(':memory:');
     sqlite.pragma('foreign_keys = ON');
     const migrations = readdirSync(resolve('drizzle'))
@@ -31,14 +31,14 @@ describe('SQLite migration', () => {
     const tables = sqlite.prepare("select name from sqlite_schema where type = 'table' order by name").all() as Array<{ name: string }>;
     expect(tables.map((row) => row.name)).toEqual([
       'accounts', 'ai_point_ledger', 'ai_usage_logs', 'app_settings', 'approvals', 'audit_logs', 'brands', 'client_members', 'clients',
-      'content_embeddings', 'content_import_batches', 'content_status_logs', 'contents', 'context_snapshots', 'history_retrieval_items', 'history_retrievals',
+      'content_embeddings', 'content_import_batches', 'content_status_logs', 'contents', 'context_snapshots', 'edit_versions', 'history_retrieval_items', 'history_retrievals',
       'memories', 'model_price_configs', 'monthly_plans', 'organization_ai_quotas', 'organizations', 'planner_candidates', 'planner_sessions',
       'run_steps', 'runs', 'script_versions', 'shoot_contents', 'shoots', 'skill_versions', 'skills', 'stores', 'users',
     ]);
 
     for (const table of [
       'accounts', 'ai_point_ledger', 'ai_usage_logs', 'app_settings', 'approvals', 'audit_logs', 'brands', 'client_members', 'clients',
-      'content_embeddings', 'content_import_batches', 'content_status_logs', 'contents', 'context_snapshots', 'history_retrieval_items', 'history_retrievals',
+      'content_embeddings', 'content_import_batches', 'content_status_logs', 'contents', 'context_snapshots', 'edit_versions', 'history_retrieval_items', 'history_retrievals',
       'memories', 'monthly_plans', 'organization_ai_quotas', 'planner_candidates', 'planner_sessions', 'run_steps', 'runs', 'script_versions', 'skill_versions',
       'shoot_contents', 'shoots', 'skills', 'stores', 'users',
     ]) {
@@ -78,13 +78,17 @@ describe('SQLite migration', () => {
     expect(new Set(scriptVersionForeignKeys.map(key => key.id)).size).toBe(3);
     const approvalForeignKeys = sqlite.prepare('pragma foreign_key_list(approvals)').all() as Array<{ id: number }>;
     expect(new Set(approvalForeignKeys.map(key => key.id)).size).toBe(3);
+    const editVersionForeignKeys = sqlite.prepare('pragma foreign_key_list(edit_versions)').all() as Array<{ id: number }>;
+    expect(new Set(editVersionForeignKeys.map(key => key.id)).size).toBe(3);
     const shootForeignKeys = sqlite.prepare('pragma foreign_key_list(shoots)').all() as Array<{ id: number }>;
     expect(new Set(shootForeignKeys.map(key => key.id)).size).toBe(5);
     const shootContentForeignKeys = sqlite.prepare('pragma foreign_key_list(shoot_contents)').all() as Array<{ id: number }>;
     expect(new Set(shootContentForeignKeys.map(key => key.id)).size).toBe(4);
     const integrityTriggers = sqlite.prepare("select name from sqlite_schema where type = 'trigger' and name like 'validate_%' order by name").all() as Array<{ name: string }>;
     expect(integrityTriggers.map(row => row.name)).toEqual([
-      'validate_content_script_pointers_update', 'validate_script_approval_version_insert', 'validate_script_approval_version_update',
+      'validate_content_edit_pointers_update', 'validate_content_editor_insert', 'validate_content_editor_update',
+      'validate_content_script_pointers_update', 'validate_final_video_approval_version_insert', 'validate_final_video_approval_version_update',
+      'validate_script_approval_version_insert', 'validate_script_approval_version_update',
       'validate_shoot_content_identity_update', 'validate_shoot_content_insert',
       'validate_shoot_hierarchy_insert', 'validate_shoot_hierarchy_update',
     ]);
@@ -92,6 +96,8 @@ describe('SQLite migration', () => {
     const contentColumns = sqlite.prepare('pragma table_info(contents)').all() as Array<{ name: string }>;
     expect(contentColumns.some(column => column.name === 'script')).toBe(false);
     expect(contentColumns.some(column => column.name === 'current_script_version_id')).toBe(true);
+    expect(contentColumns.some(column => column.name === 'editor_id')).toBe(true);
+    expect(contentColumns.some(column => column.name === 'current_edit_version_id')).toBe(true);
     expect(contentColumns.some(column => column.name === 'published_at')).toBe(true);
     expect(contentColumns.some(column => column.name === 'import_dedup_key')).toBe(true);
   });

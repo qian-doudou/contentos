@@ -47,6 +47,12 @@ export const DEMO_IDS = {
   shoot: '0198f744-8e18-7ae2-a780-52a0e20c19a2',
   shootItem: '0198f744-8e18-7ae2-a780-52a0e20c19a3',
   shootStatusLog: '0198f744-8e18-7ae2-a780-52a0e20c19a4',
+  editContent: '0198f744-8e18-7ae2-a780-52a0e20c19b1',
+  editApprovedScript: '0198f744-8e18-7ae2-a780-52a0e20c19b2',
+  editShoot: '0198f744-8e18-7ae2-a780-52a0e20c19b3',
+  editShootItem: '0198f744-8e18-7ae2-a780-52a0e20c19b4',
+  editScheduledLog: '0198f744-8e18-7ae2-a780-52a0e20c19b5',
+  editShotLog: '0198f744-8e18-7ae2-a780-52a0e20c19b6',
 } as const;
 
 const duplicateJudgeV2VersionId = '0198f744-8e18-7ae2-a780-52a0e20c1b14';
@@ -367,7 +373,7 @@ export function seedDemoData(options: { reset?: boolean } = {}) {
         id: DEMO_IDS.phaseSetting,
         organizationId: DEMO_IDS.organization,
         key: 'product.phase',
-        valueJson: JSON.stringify({ phase: 11, label: 'Shoot Management' }),
+        valueJson: JSON.stringify({ phase: 12, label: 'Edit Review' }),
         isSecret: false,
         isDemo: true,
         createdAt: now,
@@ -375,7 +381,7 @@ export function seedDemoData(options: { reset?: boolean } = {}) {
       })
       .onConflictDoUpdate({
         target: [appSettings.organizationId, appSettings.key],
-        set: { valueJson: JSON.stringify({ phase: 11, label: 'Shoot Management' }), updatedAt: now },
+        set: { valueJson: JSON.stringify({ phase: 12, label: 'Edit Review' }), updatedAt: now },
       })
       .run();
 
@@ -483,6 +489,7 @@ export function seedDemoData(options: { reset?: boolean } = {}) {
       importBatchId: null,
       currentScriptVersionId: null,
       activeApprovedScriptVersionId: null,
+      editorId: null,
       currentEditVersionId: null,
       activeApprovedEditVersionId: null,
       aiReviewStatus: null,
@@ -691,6 +698,116 @@ export function seedDemoData(options: { reset?: boolean } = {}) {
         isDemo: true,
         createdAt: now,
       }).run();
+    }
+
+    const editDemoContent = contentSchema.parse({
+      ...content,
+      id: DEMO_IDS.editContent,
+      title: '老板带你看传统铜锅怎么开锅',
+      contentType: 'process',
+      contentGoal: 'trust',
+      topic: '传统铜锅开锅过程',
+      angle: '从拍摄完成的门店实拍素材展示操作细节',
+      hookType: 'identity',
+      hookText: '一口铜锅开锅前，老板先做这一步。',
+      coreMessage: '用真实开锅过程展示传统铜锅的门店日常。',
+      productText: '传统铜锅、手切羊肉',
+      ctaType: '到店体验',
+      peopleJson: ['老板'],
+      status: 'APPROVED',
+      editorId: DEMO_IDS.editor,
+      plannedPublishDate: '2026-09-16T00:00:00.000Z',
+      deadline: '2026-09-14T12:00:00.000Z',
+      currentScriptVersionId: DEMO_IDS.editApprovedScript,
+      activeApprovedScriptVersionId: DEMO_IDS.editApprovedScript,
+      createdAt: now,
+      updatedAt: now,
+    });
+    const existingEditDemoContent = db.select({ id: contents.id, isDemo: contents.isDemo }).from(contents).where(and(
+      eq(contents.organizationId, DEMO_IDS.organization), eq(contents.id, DEMO_IDS.editContent),
+    )).get();
+    if (existingEditDemoContent && !existingEditDemoContent.isDemo)
+      throw new Error('Demo edit content ID is already owned by a non-demo record');
+    db.insert(contents).values(editDemoContent).onConflictDoNothing().run();
+    db.insert(scriptVersions).values({
+      id: DEMO_IDS.editApprovedScript,
+      organizationId: DEMO_IDS.organization,
+      contentId: DEMO_IDS.editContent,
+      versionNo: 1,
+      scriptJson: {
+        title: editDemoContent.title,
+        hook: editDemoContent.hookText,
+        spoken_script: '今天让你看看我们开铜锅的日常步骤，从加水、点火到下第一盘手切羊肉。',
+        shots: [
+          { scene: '门店餐桌', visual: '铜锅与炭火特写', spoken_line: '开锅先把这一步做对。' },
+          { scene: '用餐区', visual: '老板加水点火', spoken_line: '水量和火候都是日常经验。' },
+          { scene: '桌面', visual: '手切羊肉下锅', spoken_line: '锅开了再下第一盘羊肉。' },
+        ],
+        product_integration: '传统铜锅与手切羊肉的真实实拍',
+        cta: '到店体验传统铜锅涎。',
+        hashtags: ['#菏泽美食', '#铜锅涎', '#德祥楼'],
+      },
+      sourceType: 'operator',
+      changeSummary: '剪辑审核阶段的已批准拍摄脚本',
+      createdBy: DEMO_IDS.operator,
+      isDemo: true,
+      createdAt: now,
+    }).onConflictDoNothing().run();
+    db.insert(shoots).values({
+      id: DEMO_IDS.editShoot,
+      organizationId: DEMO_IDS.organization,
+      clientId: DEMO_IDS.client,
+      storeId: DEMO_IDS.store,
+      shootDate: '2026-09-08',
+      startTime: '14:00',
+      endTime: '16:00',
+      operatorId: DEMO_IDS.operator,
+      photographerId: DEMO_IDS.photographer,
+      location: '德祥楼（演示门店）用餐区',
+      notes: '已完成铜锅开锅与手切羊肉素材拍摄。',
+      status: 'planned',
+      isDemo: true,
+      createdAt: now,
+      updatedAt: now,
+    }).onConflictDoNothing().run();
+    const existingEditShootItem = db.select({ id: shootContents.id }).from(shootContents).where(and(
+      eq(shootContents.organizationId, DEMO_IDS.organization), eq(shootContents.id, DEMO_IDS.editShootItem),
+    )).get();
+    if (!existingEditShootItem) {
+      const currentEditContent = db.select().from(contents).where(and(
+        eq(contents.organizationId, DEMO_IDS.organization), eq(contents.id, DEMO_IDS.editContent),
+      )).get();
+      if (!currentEditContent || currentEditContent.status !== 'APPROVED'
+        || currentEditContent.activeApprovedScriptVersionId !== DEMO_IDS.editApprovedScript)
+        throw new Error('Demo edit content is not ready for its completed shoot');
+      db.insert(shootContents).values({
+        id: DEMO_IDS.editShootItem, organizationId: DEMO_IDS.organization, shootId: DEMO_IDS.editShoot,
+        contentId: DEMO_IDS.editContent, approvedScriptVersionId: DEMO_IDS.editApprovedScript,
+        shootItemStatus: 'planned', missingShots: '', note: '全部分镜已拍摄', isDemo: true,
+        createdAt: now, updatedAt: now,
+      }).run();
+      db.update(contents).set({ status: 'WAITING_SHOOT', updatedAt: now }).where(and(
+        eq(contents.organizationId, DEMO_IDS.organization), eq(contents.id, DEMO_IDS.editContent), eq(contents.status, 'APPROVED'),
+      )).run();
+      db.insert(contentStatusLogs).values({
+        id: DEMO_IDS.editScheduledLog, organizationId: DEMO_IDS.organization, contentId: DEMO_IDS.editContent,
+        previousStatus: 'APPROVED', newStatus: 'WAITING_SHOOT', triggerType: 'shoot', triggerId: DEMO_IDS.editShootItem,
+        operatorId: DEMO_IDS.operator, reason: '加入剪辑阶段演示拍摄', isDemo: true, createdAt: now,
+      }).run();
+      db.update(shootContents).set({ shootItemStatus: 'shot', updatedAt: now }).where(and(
+        eq(shootContents.organizationId, DEMO_IDS.organization), eq(shootContents.id, DEMO_IDS.editShootItem),
+      )).run();
+      db.update(contents).set({ status: 'SHOT', updatedAt: now }).where(and(
+        eq(contents.organizationId, DEMO_IDS.organization), eq(contents.id, DEMO_IDS.editContent), eq(contents.status, 'WAITING_SHOOT'),
+      )).run();
+      db.insert(contentStatusLogs).values({
+        id: DEMO_IDS.editShotLog, organizationId: DEMO_IDS.organization, contentId: DEMO_IDS.editContent,
+        previousStatus: 'WAITING_SHOOT', newStatus: 'SHOT', triggerType: 'shoot', triggerId: DEMO_IDS.editShootItem,
+        operatorId: DEMO_IDS.photographer, reason: '拍摄 Checklist 已完成', isDemo: true, createdAt: now,
+      }).run();
+      db.update(shoots).set({ status: 'completed', updatedAt: now }).where(and(
+        eq(shoots.organizationId, DEMO_IDS.organization), eq(shoots.id, DEMO_IDS.editShoot),
+      )).run();
     }
 
     for (const memory of [

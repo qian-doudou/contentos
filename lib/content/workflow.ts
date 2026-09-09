@@ -4,7 +4,7 @@ import { ApiError } from '@/lib/api/envelope';
 export type ContentStatus = (typeof contentStatuses)[number];
 export type ContentStatusTrigger = (typeof contentStatusTriggers)[number];
 
-type TransitionRule = { from: ContentStatus; to: ContentStatus; trigger: 'manual' | 'approval' | 'shoot' | 'publish' };
+type TransitionRule = { from: ContentStatus; to: ContentStatus; trigger: 'manual' | 'approval' | 'shoot' | 'edit' | 'publish' };
 
 export const contentTransitionRules = [
   { from: 'IDEA', to: 'SCRIPTING', trigger: 'manual' },
@@ -15,11 +15,12 @@ export const contentTransitionRules = [
   { from: 'APPROVED', to: 'WAITING_SHOOT', trigger: 'shoot' },
   { from: 'WAITING_SHOOT', to: 'APPROVED', trigger: 'shoot' },
   { from: 'WAITING_SHOOT', to: 'SHOT', trigger: 'shoot' },
-  { from: 'SHOT', to: 'EDITING', trigger: 'manual' },
-  { from: 'EDITING', to: 'WAITING_REVIEW', trigger: 'manual' },
-  { from: 'WAITING_REVIEW', to: 'REVISION', trigger: 'manual' },
-  { from: 'REVISION', to: 'WAITING_REVIEW', trigger: 'manual' },
-  { from: 'WAITING_REVIEW', to: 'READY_TO_PUBLISH', trigger: 'manual' },
+  { from: 'SHOT', to: 'EDITING', trigger: 'edit' },
+  { from: 'EDITING', to: 'WAITING_REVIEW', trigger: 'edit' },
+  { from: 'WAITING_REVIEW', to: 'REVISION', trigger: 'approval' },
+  { from: 'REVISION', to: 'WAITING_REVIEW', trigger: 'edit' },
+  { from: 'WAITING_REVIEW', to: 'READY_TO_PUBLISH', trigger: 'approval' },
+  { from: 'READY_TO_PUBLISH', to: 'WAITING_REVIEW', trigger: 'edit' },
   { from: 'READY_TO_PUBLISH', to: 'PUBLISHED', trigger: 'publish' },
   { from: 'PUBLISHED', to: 'REVIEWED', trigger: 'manual' },
 ] as const satisfies readonly TransitionRule[];
@@ -42,7 +43,7 @@ export function assertContentTransition(from: ContentStatus, to: ContentStatus, 
   const rule = transitionRule(from, to);
   if (!rule) throw new ApiError(409, 'INVALID_STATUS_TRANSITION', `不允许从 ${from} 转换到 ${to}`);
   if (rule.trigger !== trigger)
-    throw new ApiError(409, 'BUSINESS_TRIGGER_REQUIRED', '该状态转换必须由对应的审核、拍摄或发布业务事务触发');
+    throw new ApiError(409, 'BUSINESS_TRIGGER_REQUIRED', '该状态转换必须由对应的审核、拍摄、剪辑或发布业务事务触发');
   return rule;
 }
 

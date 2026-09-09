@@ -6,8 +6,10 @@ import { aiInfrastructureService } from '@/lib/ai/service';
 import { memoryService } from '@/lib/memory/service';
 import { historyRetrievalService } from '@/lib/history/service';
 import { aiPlannerService } from '@/lib/planner/service';
-import { publicScriptReviewService, scriptApprovalService } from '@/lib/scripts/service';
+import { scriptApprovalService } from '@/lib/scripts/service';
 import { shootService } from '@/lib/shoots/service';
+import { editReviewService } from '@/lib/edits/service';
+import { approvalDecisionService, publicReviewService } from '@/lib/reviews/service';
 import { z } from 'zod';
 
 export const DEV_USER_COOKIE = 'contentos_dev_user_id';
@@ -66,10 +68,18 @@ export function currentScriptApproval(request?: Request) {
   const { organizationId, userId } = localContextIds(request);
   return scriptApprovalService(db, organizationId, userId);
 }
-export function publicScriptReview() {
-  return publicScriptReviewService(db);
-}
 export function currentShoots(request?: Request) {
   const { organizationId, userId } = localContextIds(request);
   return shootService(db, organizationId, userId);
+}
+export function currentEdits(request?: Request) {
+  const { organizationId, userId } = localContextIds(request);
+  return editReviewService(db, organizationId, userId);
+}
+export function currentApprovalDecisions(request?: Request) {
+  const { organizationId, userId } = localContextIds(request);
+  return approvalDecisionService(db, organizationId, userId);
+}
+export function publicReview() {
+  return publicReviewService(db);
 }

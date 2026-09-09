@@ -20,6 +20,7 @@ import { ContentEditorDialog, ContentForm } from './content-form';
 import { ContentWorkflowPanel } from './workflow-panel';
 import { WorkflowBoard, WorkflowStatusBadge } from './workflow-board';
 import { ScriptApprovalPanel } from '@/components/contentos/script/script-approval-panel';
+import { EditReviewPanel } from '@/components/contentos/edit/edit-pages';
 
 const priorityTone: Record<string, string> = {
   low: 'bg-slate-100 text-slate-600', normal: 'bg-cyan-50 text-cyan-700', high: 'bg-amber-50 text-amber-700', urgent: 'bg-rose-50 text-rose-700',
@@ -112,6 +113,6 @@ export function ContentDetailPage({ id }: { id: string }) {
     <section className="grid gap-4 lg:grid-cols-3"><article className="surface-card"><h2 className="font-semibold">产品表达</h2><p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-slate-600">{item.productText || '未填写'}</p></article><article className="surface-card"><h2 className="font-semibold">本地元素</h2><p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-slate-600">{item.localElement || '未填写'}</p></article><article className="surface-card"><h2 className="font-semibold">出镜人物</h2><div className="mt-4"><Tags values={item.peopleJson} /></div></article></section>
     <ScriptApprovalPanel contentId={item.id} onContentChanged={state.reload} />
     <ContentWorkflowPanel content={item} onChanged={state.reload} />
-    <section className="surface-card border-dashed"><h2 className="font-semibold">剪辑版本</h2><p className="mt-2 text-sm leading-6 text-slate-500">剪辑版本与最终视频审核将在后续阶段接入；脚本与客户审核已使用独立版本和审批记录。</p></section>
+    <EditReviewPanel contentId={item.id} onContentChanged={state.reload} />
   </div>;
 }

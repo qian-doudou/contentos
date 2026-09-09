@@ -6,7 +6,7 @@ import {
   contentStatuses, contentStatusTriggers, contentTypes, cooperationStatuses, historyRetrievalMethods, hookTypes, modelProfiles,
   memoryScopeTypes, memorySourceTypes, memoryStatuses, memoryTypes, priceConfigStatuses,
   plannerCandidateStatuses, plannerQualityStatuses, plannerSessionStatuses,
-  approvalReviewerTypes, approvalStatuses, approvalTypes, scriptSourceTypes,
+  approvalReviewerTypes, approvalStatuses, approvalTypes, editAssetTypes, scriptSourceTypes,
   shootItemStatuses, shootStatuses,
 } from './constants';
 import {
@@ -363,6 +363,7 @@ export const contents = sqliteTable('contents', {
   importBatchId: text('import_batch_id'),
   currentScriptVersionId: text('current_script_version_id'),
   activeApprovedScriptVersionId: text('active_approved_script_version_id'),
+  editorId: text('editor_id'),
   currentEditVersionId: text('current_edit_version_id'),
   activeApprovedEditVersionId: text('active_approved_edit_version_id'),
   aiReviewStatus: text('ai_review_status'),
@@ -413,7 +414,7 @@ export const contentStatusLogs = sqliteTable('content_status_logs', {
   foreignKey({ columns: [t.organizationId, t.operatorId], foreignColumns: [users.organizationId, users.id] }),
   check('content_status_logs_previous_valid', sql`${t.previousStatus} IN ('IDEA', 'SCRIPTING', 'WAITING_APPROVAL', 'APPROVED', 'WAITING_SHOOT', 'SHOT', 'EDITING', 'WAITING_REVIEW', 'REVISION', 'READY_TO_PUBLISH', 'PUBLISHED', 'REVIEWED')`),
   check('content_status_logs_new_valid', sql`${t.newStatus} IN ('IDEA', 'SCRIPTING', 'WAITING_APPROVAL', 'APPROVED', 'WAITING_SHOOT', 'SHOT', 'EDITING', 'WAITING_REVIEW', 'REVISION', 'READY_TO_PUBLISH', 'PUBLISHED', 'REVIEWED')`),
-  check('content_status_logs_trigger_valid', sql`${t.triggerType} IN ('manual', 'approval', 'shoot', 'publish', 'system')`),
+  check('content_status_logs_trigger_valid', sql`${t.triggerType} IN ('manual', 'approval', 'shoot', 'edit', 'publish', 'system')`),
 ]);
 
 export const scriptVersions = sqliteTable('script_versions', {
@@ -445,6 +446,29 @@ export const scriptVersions = sqliteTable('script_versions', {
   check('script_versions_version_positive', sql`${t.versionNo} >= 1 AND typeof(${t.versionNo}) = 'integer'`),
   check('script_versions_source_valid', sql`${t.sourceType} IN ('ai', 'operator', 'client_revision', 'rewrite')`),
   check('script_versions_json_valid', sql`json_valid(${t.scriptJson}) AND json_type(${t.scriptJson}) = 'object'`),
+]);
+
+export const editVersions = sqliteTable('edit_versions', {
+  id: text('id').primaryKey(),
+  organizationId: text('organization_id').notNull().references(() => organizations.id),
+  contentId: text('content_id').notNull(),
+  versionNo: integer('version_no').notNull(),
+  assetUrl: text('asset_url').notNull(),
+  assetType: text('asset_type', { enum: editAssetTypes }).notNull(),
+  note: text('note').notNull().default(''),
+  createdBy: text('created_by').notNull(),
+  isDemo: integer('is_demo', { mode: 'boolean' }).notNull().default(false),
+  createdAt: text('created_at').notNull(),
+}, (t) => [
+  uniqueIndex('uq_edit_versions_org_id').on(t.organizationId, t.id),
+  uniqueIndex('uq_edit_versions_org_content_version').on(t.organizationId, t.contentId, t.versionNo),
+  uniqueIndex('uq_edit_versions_org_content_id').on(t.organizationId, t.contentId, t.id),
+  index('idx_edit_versions_org_content_created').on(t.organizationId, t.contentId, t.createdAt),
+  foreignKey({ columns: [t.organizationId, t.contentId], foreignColumns: [contents.organizationId, contents.id] }),
+  foreignKey({ columns: [t.organizationId, t.createdBy], foreignColumns: [users.organizationId, users.id] }),
+  check('edit_versions_version_positive', sql`${t.versionNo} >= 1 AND typeof(${t.versionNo}) = 'integer'`),
+  check('edit_versions_asset_type_valid', sql`${t.assetType} IN ('url', 'local_reference')`),
+  check('edit_versions_asset_url_present', sql`length(trim(${t.assetUrl})) > 0`),
 ]);
 
 export const approvals = sqliteTable('approvals', {
@@ -617,6 +641,7 @@ export type MonthlyPlanRow = typeof monthlyPlans.$inferSelect;
 export type ContentRow = typeof contents.$inferSelect;
 export type ContentStatusLogRow = typeof contentStatusLogs.$inferSelect;
 export type ScriptVersionRow = typeof scriptVersions.$inferSelect;
+export type EditVersionRow = typeof editVersions.$inferSelect;
 export type ApprovalRow = typeof approvals.$inferSelect;
 export type ShootRow = typeof shoots.$inferSelect;
 export type ShootContentRow = typeof shootContents.$inferSelect;

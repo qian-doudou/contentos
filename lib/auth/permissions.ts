@@ -39,6 +39,10 @@ export type ShootAccessScope =
   | { kind: 'organization' }
   | { kind: 'clients'; clientIds: string[] }
   | { kind: 'photographer'; photographerId: string };
+export type EditAccessScope =
+  | { kind: 'organization' }
+  | { kind: 'clients'; clientIds: string[] }
+  | { kind: 'editor'; editorId: string };
 
 const forbidden = (message = '当前身份无权执行此操作') =>
   new ApiError(403, 'PERMISSION_DENIED', message);
@@ -140,6 +144,39 @@ export function permissionService(db: Database, organizationId: string, userId: 
     if (!canExecuteShoot(clientId, photographerId))
       throw forbidden('当前身份无权更新该拍摄任务的执行状态');
   };
+  const editAccessScope = (): EditAccessScope => {
+    if (actor.role === 'owner' || actor.role === 'admin') return { kind: 'organization' };
+    if (actor.role === 'editor') return { kind: 'editor', editorId: actor.id };
+    if (actor.role === 'operator' || actor.role === 'viewer') return { kind: 'clients', clientIds: readableClientIds() ?? [] };
+    throw forbidden('当前角色无权访问剪辑任务');
+  };
+  const requireEditRead = (clientId: string, editorId: string | null) => {
+    const scope = editAccessScope();
+    if (scope.kind === 'organization') return;
+    if (scope.kind === 'editor') {
+      if (scope.editorId !== editorId) throw forbidden('剪辑人员只能查看分配给本人的任务');
+      return;
+    }
+    if (!scope.clientIds.includes(z.uuid().parse(clientId))) throw forbidden('当前身份未被授权访问该客户的剪辑任务');
+  };
+  const canAssignEdit = (clientId: string) => canWriteClient(clientId);
+  const requireEditAssignment = (clientId: string) => {
+    if (!canAssignEdit(clientId)) throw forbidden('当前身份无权分配该客户的剪辑任务');
+  };
+  const canWorkOnEdit = (clientId: string, editorId: string | null) => {
+    if (actor.role === 'owner' || actor.role === 'admin') return true;
+    return actor.role === 'editor' && actor.id === editorId;
+  };
+  const requireEditWork = (clientId: string, editorId: string | null) => {
+    if (!canWorkOnEdit(clientId, editorId)) throw forbidden('当前身份无权提交该剪辑任务的成片版本');
+  };
+  const canReviewEdit = (clientId: string) => {
+    if (actor.role === 'owner' || actor.role === 'admin') return true;
+    return actor.role === 'operator' && canWriteClient(clientId);
+  };
+  const requireEditReview = (clientId: string) => {
+    if (!canReviewEdit(clientId)) throw forbidden('当前身份无权审核该客户的成片版本');
+  };
 
   return {
     organization,
@@ -159,5 +196,13 @@ export function permissionService(db: Database, organizationId: string, userId: 
     requireShootWrite,
     canExecuteShoot,
     requireShootExecution,
+    editAccessScope,
+    requireEditRead,
+    canAssignEdit,
+    requireEditAssignment,
+    canWorkOnEdit,
+    requireEditWork,
+    canReviewEdit,
+    requireEditReview,
   };
 }

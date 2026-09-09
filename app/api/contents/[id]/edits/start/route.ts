@@ -1,11 +1,11 @@
-import { currentApprovalDecisions } from '@/lib/api/context';
+import { currentEdits } from '@/lib/api/context';
 import { handleApi, methodNotAllowed, readJson } from '@/lib/api/handler';
 
 export const runtime = 'nodejs';
 type Context = { params: Promise<{ id: string }> };
 
 export async function POST(request: Request, context: Context) {
-  return handleApi(async () => currentApprovalDecisions(request).decide((await context.params).id, await readJson(request)));
+  return handleApi(async () => currentEdits(request).start((await context.params).id, await readJson(request)));
 }
 
 export const GET = methodNotAllowed;

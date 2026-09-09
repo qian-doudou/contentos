@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
 import {
-  Activity, BarChart3, Building2, Camera, Clapperboard, Cpu, FileCheck2,
+  Activity, BarChart3, Building2, Camera, Clapperboard, Cpu, FileCheck2, Film,
   Gauge, Menu, PanelTop, Settings, ShieldCheck, Sparkles, Users,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -20,6 +20,7 @@ const navigation = [
   { href: '/accounts', label: '品牌与账号', icon: PanelTop },
   { href: '/contents', label: '内容运营', icon: Clapperboard },
   { href: '/shoots', label: '拍摄管理', icon: Camera },
+  { href: '/edits', label: '剪辑审核', icon: Film },
   { href: '/ai', label: 'AI 运营', icon: Sparkles },
   { href: '/analytics', label: '运营数据', icon: BarChart3 },
   { href: '/ops', label: '运营中心', icon: Activity },
@@ -102,7 +103,7 @@ function AuthenticatedAppShell({ children }: { children: React.ReactNode }) {
             </div>
             <div className="hidden text-sm text-slate-500 lg:block">{identity.data?.organization.name || '正在读取组织…'}</div>
             <div className="flex items-center gap-3">
-              <span className="hidden rounded-full border border-slate-200 px-3 py-1.5 text-xs text-slate-500 xl:inline-flex">Phase 11 · Shoot Management</span>
+              <span className="hidden rounded-full border border-slate-200 px-3 py-1.5 text-xs text-slate-500 xl:inline-flex">Phase 12 · Edit Review</span>
               {identity.loading ? <span className="text-xs text-slate-400">身份加载中…</span> : identity.error ? <Button variant="outline" size="sm" onClick={identity.reload}>身份加载失败</Button> : identity.data && (
                 identity.data.switchingEnabled
                   ? <NativeSelect aria-label="开发用户切换器" className="w-40" value={identity.data.currentUser.id} disabled={switching} onChange={event => void switchIdentity(event.target.value)}>

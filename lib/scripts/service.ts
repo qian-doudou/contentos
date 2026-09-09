@@ -1,4 +1,3 @@
-import { createHash, randomBytes } from 'node:crypto';
 import { and, asc, desc, eq, gt, lte, sql } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { z } from 'zod';
@@ -10,6 +9,7 @@ import { OpenAICompatibleClient } from '@/lib/llm/client';
 import { contextBuilder } from '@/lib/memory/context-builder';
 import { plannerAiRuntime } from '@/lib/planner/ai-runtime';
 import { qualityOutputSchema, type QualityIssue } from '@/lib/planner/contracts';
+import { createReviewToken, reviewTokenHash, reviewTokenSchema } from '@/lib/reviews/token';
 import {
   approvalDecisionInputSchema,
   approvalViewSchema,
@@ -30,11 +30,6 @@ const STEP_CODES = ['context_build', 'script_generator', 'quality_check', 'persi
 const missing = () => new ApiError(404, 'NOT_FOUND', '记录不存在或不属于当前组织');
 const json = (value: unknown) => JSON.stringify(value);
 const elapsed = (started: number, finished: number) => Math.max(0, finished - started);
-const tokenSchema = z.string().trim().regex(/^[A-Za-z0-9_-]{43,128}$/, '审核 Token 格式无效');
-
-function tokenHash(token: string) {
-  return createHash('sha256').update(token).digest('hex');
-}
 
 function priceTokens(value: string) {
   return [...new Set(value.match(/(?:¥|￥)\s*\d+(?:\.\d+)?|\d+(?:\.\d+)?\s*(?:元|块|折|%)/g) ?? [])];
@@ -126,7 +121,7 @@ export function scriptApprovalService(
   const timestamp = () => now().toISOString();
   const ai = plannerAiRuntime(db, organizationId, userId, runtime);
   const contexts = contextBuilder(db, organizationId, userId, { now });
-  const createToken = runtime.createToken ?? (() => randomBytes(32).toString('base64url'));
+  const createToken = runtime.createToken ?? createReviewToken;
   const isDemo = permissions.organization.isDemo;
 
   function content(id: string, write = false) {
@@ -186,6 +181,7 @@ export function scriptApprovalService(
     db.update(tables.approvals).set({ status: 'expired', updatedAt: at }).where(and(
       eq(tables.approvals.organizationId, organizationId),
       eq(tables.approvals.contentId, contentId),
+      eq(tables.approvals.approvalType, 'script'),
       eq(tables.approvals.status, 'pending'),
       lte(tables.approvals.expiresAt, at),
     )).run();
@@ -418,6 +414,7 @@ export function scriptApprovalService(
       db.update(tables.approvals).set({ status: 'expired', updatedAt: at }).where(and(
         eq(tables.approvals.organizationId, approval.organizationId),
         eq(tables.approvals.contentId, approval.contentId),
+        eq(tables.approvals.approvalType, 'script'),
         eq(tables.approvals.status, 'pending'),
       )).run();
       db.insert(tables.contentStatusLogs).values({
@@ -650,8 +647,8 @@ export function scriptApprovalService(
         if (reviewer.role !== 'owner' && reviewer.role !== 'admin')
           throw new ApiError(409, 'REVIEWER_NOT_ALLOWED', '内部脚本审核人必须是 Owner 或 Admin');
       } else {
-        rawToken = tokenSchema.parse(createToken());
-        hash = tokenHash(rawToken);
+        rawToken = reviewTokenSchema.parse(createToken());
+        hash = reviewTokenHash(rawToken);
         expiresAt = value.expiresAt ?? new Date(now().getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
         const expiresMs = Date.parse(expiresAt);
         if (expiresMs <= now().getTime() || expiresMs > now().getTime() + 30 * 24 * 60 * 60 * 1000)
@@ -665,7 +662,8 @@ export function scriptApprovalService(
           throw new ApiError(409, 'STALE_SCRIPT_VERSION', '脚本或内容状态已变化，请刷新后重试');
         assertContentTransition(current.status, 'WAITING_APPROVAL', 'approval');
         db.update(tables.approvals).set({ status: 'expired', updatedAt: at }).where(and(
-          eq(tables.approvals.organizationId, organizationId), eq(tables.approvals.contentId, current.id), eq(tables.approvals.status, 'pending'),
+          eq(tables.approvals.organizationId, organizationId), eq(tables.approvals.contentId, current.id),
+          eq(tables.approvals.approvalType, 'script'), eq(tables.approvals.status, 'pending'),
         )).run();
         db.insert(tables.approvals).values({
           id: approvalId, organizationId, contentId: current.id, approvalType: 'script', versionId: version.id,
@@ -703,6 +701,7 @@ export function scriptApprovalService(
         eq(tables.approvals.organizationId, organizationId), eq(tables.approvals.id, z.uuid().parse(approvalId)),
       )).get();
       if (!approval) throw missing();
+      if (approval.approvalType !== 'script') throw missing();
       if (approval.reviewerType !== 'internal_user')
         throw new ApiError(403, 'REVIEW_CHANNEL_MISMATCH', '外部客户审核只能通过专属 Token 链接提交');
       if (approval.reviewerUserId !== userId && permissions.actor.role !== 'owner')
@@ -720,9 +719,9 @@ export function publicScriptReviewService(
   const now = runtime.now ?? (() => new Date());
 
   function approvalForToken(token: string) {
-    const validToken = tokenSchema.parse(token);
+    const validToken = reviewTokenSchema.parse(token);
     const approval = db.select().from(tables.approvals).where(and(
-      eq(tables.approvals.reviewTokenHash, tokenHash(validToken)),
+      eq(tables.approvals.reviewTokenHash, reviewTokenHash(validToken)),
       eq(tables.approvals.reviewerType, 'external_client'),
       eq(tables.approvals.approvalType, 'script'),
     )).get();
@@ -800,7 +799,8 @@ export function publicScriptReviewService(
         if (contentChanged.changes !== 1) throw new ApiError(409, 'STALE_CONTENT_STATUS', '内容状态已变化，请刷新后重试');
         db.update(tables.approvals).set({ status: 'expired', updatedAt: at }).where(and(
           eq(tables.approvals.organizationId, approval.organizationId),
-          eq(tables.approvals.contentId, approval.contentId), eq(tables.approvals.status, 'pending'),
+          eq(tables.approvals.contentId, approval.contentId), eq(tables.approvals.approvalType, 'script'),
+          eq(tables.approvals.status, 'pending'),
         )).run();
         db.insert(tables.contentStatusLogs).values({
           id: crypto.randomUUID(), organizationId: approval.organizationId, contentId: content.id,

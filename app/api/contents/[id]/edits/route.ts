@@ -1,0 +1,16 @@
+import { currentEdits } from '@/lib/api/context';
+import { handleApi, methodNotAllowed, readJson } from '@/lib/api/handler';
+
+export const runtime = 'nodejs';
+type Context = { params: Promise<{ id: string }> };
+
+export async function GET(request: Request, context: Context) {
+  return handleApi(async () => currentEdits(request).workspace((await context.params).id));
+}
+
+export async function POST(request: Request, context: Context) {
+  return handleApi(async () => currentEdits(request).submitVersion((await context.params).id, await readJson(request)), 201);
+}
+
+export const PUT = methodNotAllowed;
+export const DELETE = methodNotAllowed;

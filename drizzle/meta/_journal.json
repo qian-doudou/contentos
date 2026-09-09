@@ -85,6 +85,13 @@
       "when": 1788862696940,
       "tag": "0011_right_rattler",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1788914107917,
+      "tag": "0012_jittery_carmella_unuscione",
+      "breakpoints": true
     }
   ]
 }

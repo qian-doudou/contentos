@@ -1,6 +1,6 @@
 # ContentOS
 
-ContentOS 是面向本地生活短视频代运营团队的 AI 内容运营与项目管理平台。当前已完成第十一阶段 Shoot Management：只有 APPROVED 且具有活动已批准脚本的 Content 能加入拍摄，关联、Content 状态与状态日志在同一 SQLite 事务中完成。拍摄整体状态由 Checklist 项实时计算，缺镜、改期与取消均保留历史；摄影人员只能查看和更新本人任务。本阶段不调用 AI，原有无 Key 确定性 Mock 能力保持不变。
+ContentOS 是面向本地生活短视频代运营团队的 AI 内容运营与项目管理平台。当前已完成第十二阶段 Edit Review：已拍摄 Content 可分配给 Editor，成片以不可变版本提交，内部或外部审核会在同一 SQLite 事务中推进状态、设置活动批准版本并追加状态日志。要求修改支持 REVISION 循环，READY_TO_PUBLISH 后提交新版会清空旧活动指针。本阶段不调用 AI，原有无 Key 确定性 Mock 能力保持不变。
 
 ## 本地运行
 
@@ -40,7 +40,7 @@ Embedding 使用 `EMBEDDING_BASE_URL` / `EMBEDDING_API_KEY` / `EMBEDDING_MODEL`�
 - `admin`：组织与业务主数据管理，不包含危险系统操作。
 - `operator`：只读取 `client_members` 已分配客户的主数据，并可管理这些客户的月度计划与内容；不能修改客户主资料。
 - `photographer`：只读取本人拍摄任务、已批准脚本与 Checklist，并可更新本人 Checklist 执行状态。
-- `editor`：当前不授予拍摄或主数据权限；本人剪辑任务权限在下一阶段实现。
+- `editor`：只读取分配给本人的剪辑任务，可开始处理并提交不可变成片版本；不获得客户主数据或他人任务权限。
 - `viewer`：只读取 `client_members` 已授权客户，所有主数据写入均返回 403。
 
 权限通过 `lib/auth/permissions.ts` 统一校验。请求其他组织的 ID 返回 404；请求同组织但未授权的客户返回 403，不用空数组掩盖越权。
@@ -59,9 +59,11 @@ Embedding 使用 `EMBEDDING_BASE_URL` / `EMBEDDING_API_KEY` / `EMBEDDING_MODEL`�
 - `/contents/plans`、`/contents/plans/new`、`/contents/plans/[id]`：月度计划查询、创建、编辑和类型目标/实际统计。
 - `/contents`：结构化内容筛选、表格与七列 Kanban；拖拽失败时回滚界面状态。
 - `/contents/new`、`/contents/[id]`：内容创建、编辑、脚本版本生成/人工修改、客户审核、合法状态转换和状态时间线。
-- `/review/[token]`：只展示 Token 绑定的品牌必要信息与指定脚本版本，支持客户批准、要求修改或拒绝；无后台导航和其他内容枚举入口。
+- `/review/[token]`：只展示 Token 绑定的指定脚本或成片版本，支持客户批准、要求修改或拒绝；无后台导航和其他内容枚举入口。
 - `/shoots`：按日历或列表查看真实拍摄排期，支持客户、状态与日期筛选及新建排期。
 - `/shoots/[id]`：展示客户、门店、时间、运营、摄影与移动端 Checklist；每条直接读取排期时锁定的 Approved Script 版本、人物、产品与 shots。
+- `/edits`：Editor 工作台，按当前开发身份在服务端限定任务范围并支持状态筛选。
+- `/edits/[id]`：剪辑分配、开始处理、成片版本提交、Diff 式元数据列表和内外部审核记录。内容详情页同步提供该面板。
 - `/skills`、`/skills/[id]`：Skill 列表、Prompt/Schema 编辑、不可变版本历史、新版本式回滚和 Test Run。
 - `/settings/ai`：安全的百炼模式/模型概览、当前额度和可追加的模型价格配置。
 - `/ops/runs`：按 Run 类型和状态查询真实执行、Step、Usage、成本与计费 Points。
@@ -73,7 +75,7 @@ Embedding 使用 `EMBEDDING_BASE_URL` / `EMBEDDING_API_KEY` / `EMBEDDING_MODEL`�
 - 默认数据库：`./data/contentos.db`，可通过 `DATABASE_PATH` 修改。
 - Schema：`db/schema.ts`。
 - Migration：`drizzle/`。
-- Seed：`npm run db:seed`，幂等写入带 `is_demo` 标识的组织、5 位可切换成员、客户授权关系、德祥楼业务层级、2026 年 9 月计划、结构化内容、3 条历史内容、6 条已确认档案 Memory、8 个系统 Skill 及版本快照、2026 演示 AI 额度，以及 1 场带人工已批准脚本和 Checklist 的拍摄排期。不预置虚构经营指标或模型价格。
+- Seed：`npm run db:seed`，幂等写入带 `is_demo` 标识的组织、5 位可切换成员、客户授权关系、德祥楼业务层级、2026 年 9 月计划、结构化内容、3 条历史内容、6 条已确认档案 Memory、8 个系统 Skill 及版本快照、2026 演示 AI 额度，以及待拍摄和已拍摄的真实工作流演示数据。不预置虚构经营指标或模型价格。
 - 恢复演示数据：`npm run db:reset`，或在开发环境调用 `POST /api/dev/reset` 并传入 `{ "confirm": "RESET_DEMO" }`。该操作只恢复固定 demo ID，不物理删除业务记录，也不绕过状态机重置已有内容的工作流状态。
 
 所有时间以 ISO 8601 文本保存，所有业务 ID 使用 UUID。核心层级通过包含 `organization_id` 的复合外键约束，服务层所有 ID 查询同时带组织条件。数据库文件被 Git 忽略，进程重启和页面刷新不会清空数据。
@@ -152,6 +154,16 @@ AI Content Planner 接口：
 - `POST /api/shoots/[id]/items`（加入已批准内容）
 - `POST /api/shoots/[id]/items/[itemId]/action`（已拍、缺镜、改期、取消或从未执行排期移除）
 
+剪辑与成片审核接口：
+
+- `GET /api/edits`（按服务端权限范围查询 Editor 任务）
+- `GET/POST /api/contents/[id]/edits`（版本工作区 / 提交新成片版本）
+- `POST /api/contents/[id]/edits/assign`
+- `POST /api/contents/[id]/edits/start`
+- `POST /api/contents/[id]/edits/review`（为当前版本重新发起审核）
+- `POST /api/approvals/[id]/decision`（根据 approval type 分派脚本或成片内部审核）
+- `GET/POST /api/review/[token]`（根据 Token 只展示绑定的脚本或成片）
+
 导入单次上限 200 行 / 1 MB，去重策略为 `external_id`、`title_published_at` 或 `canonical`。正式写入只接受已持久化且无错误的预览批次；数据库唯一约束会再次阻止重复。Embedding 的 `canonical_text` 仅由 title + topic + angle + hook_text + core_message 组成。上述字段改变时旧向量在业务事务中标记 `stale`，随后重新建立 Active 向量。
 
 历史召回只查询同一 organization + account 的 `PUBLISHED` / `REVIEWED` Content。Top10 的 content_id、similarity、retrieval_method、source_hash 和 rank 保存到检索记录；规则综合语义、Topic、Angle、Hook 和 Core Message，Topic 权重仅 10%。最多 5 条进入 `duplicate_judge`，输出 content_id 必须属于本次 Top5，否则 Run 失败并使用确定性规则结果。去重页始终使用 `run_type=test`、`billed_points=0`。
@@ -167,6 +179,8 @@ Planner 的正式 Run 固定记录 `context_build`、`content_planner`、`candid
 `script_versions` 永不覆盖旧正文，同一 Content 的 `version_no` 唯一递增。创建新草稿不会删除旧批准记录；已批准 Content 提交新版本时会进入 `WAITING_APPROVAL` 并清空 `active_approved_script_version_id`，避免拍摄误用旧版。后续 Shoot 只能读取该活动批准指针。`approvals` 保存具体 Content/Version 绑定，迁移中的数据库触发器会阻止跨组织、跨 Content 的脚本指针与审核绑定。
 
 `shoot_contents.approved_script_version_id` 锁定加入排期时的活动已批准脚本，后续草稿不会改变历史 Checklist。加入拍摄在同一事务中执行 `APPROVED → WAITING_SHOOT`；已拍执行 `WAITING_SHOOT → SHOT`；从未执行排期移除或取消执行 `WAITING_SHOOT → APPROVED`。缺镜和改期保留 `WAITING_SHOOT`，可关联同客户、同门店的新拍摄。Shoot 整体状态只由关联项组合推导，不接受 completed count 或任意状态写入。
+
+`edit_versions` 只记录 URL 或安全的相对本地素材引用，不上传大型视频文件。版本号在同一 Content 内唯一递增，数据库触发器禁止原地更新版本，并校验 Editor 角色、Content 版本指针和 `final_video` Approval 绑定。`SHOT → EDITING → WAITING_REVIEW`、退回到 `REVISION`、再提交和批准到 `READY_TO_PUBLISH` 均由统一服务在事务中写入状态日志，通用 transition API 无法绕过。
 
 动态价格事实只允许来自 Context 的 L1–L3 已确认信息，不从历史内容摘要继承。模型生成 Context 中不存在的具体价格时，服务端会在展示前移除，并记录 `unverified_dynamic_fact` 质量提示；过期或 superseded 的旧价格不会进入 Context 或候选正文。
 
@@ -200,7 +214,8 @@ Skill 的 Input/Output Schema 在写入和执行时都经 Zod 校验。Productio
 - Account：德祥楼老板IP，目标为本地曝光、老板人设、团购转化
 - Monthly Plan：2026 年 9 月，计划 8 条，人设/产品/本地/转化各 25%
 - Content：《老板带你认识鲁西南铜锅涮》待办内容，另有 3 条用于 Top10 召回的演示历史内容；均不含脚本正文或虚构经营指标
-- Shoot：2026-09-10 德祥楼演示拍摄，摄影 A 负责，含 1 条锁定人工已批准脚本的待拍 Checklist
+- Shoot：2026-09-10 德祥楼待拍演示排期；另有 1 场已完成拍摄及状态日志
+- Edit：《老板带你看传统铜锅怎么开锅》已处于 `SHOT`，分配给剪辑 A，可直接演示开始剪辑与成片审核闭环
 - AI：8 个系统内置 Skill，每个含 v1 快照；演示组织当期 1000 Points，初始已用 0
 - Memory：从德祥楼 Brand/Account 已确认字段初始化 6 条，`source_type=brand_profile`、`confidence=1`
 
@@ -215,6 +230,6 @@ npm run build
 
 ## 当前边界
 
-当前未接入真实 OAuth、抖音 API、素材文件上传、剪辑版本、Publish 记录、自动发布、GMV、支付、视频生成、自动剪辑、数字人或企业生产数据。外部审核 Token 适用于本地 MVP 演示，尚未接入短信、邮件或企业客户身份体系；原始 Token 只在提交审核响应中返回一次，遗失后需重新提交新审核。真实百炼调用需配置有效 Key 并为实际模型名添加价格配置；没有价格时成本显示“未知”。
+当前未接入真实 OAuth、抖音 API、大型素材文件上传、Publish 记录、自动发布、GMV、支付、视频生成、自动剪辑、数字人或企业生产数据。外部审核 Token 适用于本地 MVP 演示，尚未接入短信、邮件或企业客户身份体系；原始 Token 只在提交或重发审核响应中返回一次。真实百炼调用需配置有效 Key 并为实际模型名添加价格配置；没有价格时成本显示“未知”。
 
 由于 Publish 业务对象尚未实现，`READY_TO_PUBLISH → PUBLISHED` 目前只会被服务端阻止，不伪造尚未存在的业务副作用。拍摄本阶段只记录结构化 Checklist 与缺镜说明，不存储视频或图片文件。
