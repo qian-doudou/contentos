@@ -15,6 +15,8 @@ import { z } from 'zod';
 import * as tables from '@/db/schema';
 import { permissionService } from '@/lib/auth/permissions';
 import { ApiError } from '@/lib/api/envelope';
+import { assertNonProductionAiAllowed } from '@/lib/ops/config';
+import { sanitizeTraceJson } from '@/lib/ops/trace-safety';
 import {
   OpenAICompatibleClient,
   parseJsonOutput,
@@ -306,6 +308,7 @@ export function aiInfrastructureService(
         effectivePrice(model, createdAt),
       ),
       billedPoints: args.billedPoints,
+      attempts: args.completion?.attempts ?? 1,
       durationMs: args.durationMs,
       status: args.status,
       isDemo,
@@ -439,6 +442,7 @@ export function aiInfrastructureService(
       requireQuota(skill.pointCost);
     } else {
       permissions.require('ai.test');
+      assertNonProductionAiAllowed(db, organizationId, permissions.actor.role, args.runType, timestamp());
     }
     const inputResult = zodFromJsonSchema(skill.inputSchemaJson).safeParse(
       args.input,
@@ -937,7 +941,12 @@ export function aiInfrastructureService(
       return runListDataSchema.parse({
         items: rows.map((run) => ({
           ...run,
-          steps: steps.filter((step) => step.runId === run.id),
+          steps: steps.filter((step) => step.runId === run.id).map((step) => ({
+            ...step,
+            inputJson: sanitizeTraceJson(step.inputJson),
+            outputJson: sanitizeTraceJson(step.outputJson),
+            errorJson: sanitizeTraceJson(step.errorJson),
+          })),
           usage: usage.filter((item) => item.runId === run.id),
         })),
         total:

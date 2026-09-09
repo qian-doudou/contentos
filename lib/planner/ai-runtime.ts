@@ -77,7 +77,8 @@ export function plannerAiRuntime(
       skillCode: args.skill.code, skillVersion: args.skill.currentVersion,
       providerRequestId: args.completion?.providerRequestId ?? null, model, inputTokens, outputTokens,
       estimatedCost: estimateModelCost(inputTokens, outputTokens, price(model, createdAt)),
-      billedPoints: 0, durationMs: args.durationMs, status: args.status,
+      billedPoints: 0, attempts: args.completion?.attempts ?? 1,
+      durationMs: args.durationMs, status: args.status,
       isDemo: permissions.organization.isDemo, createdAt,
     });
     db.insert(tables.aiUsageLogs).values(row).run();

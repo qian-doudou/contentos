@@ -1,6 +1,6 @@
 # ContentOS
 
-ContentOS 是面向本地生活短视频代运营团队的 AI 内容运营与项目管理平台。当前已完成第十四阶段 AI Review & Strategy：系统先按账号与周期从 Performance Snapshot 确定性聚合表现事实，再由百炼千问解释指标并生成下一周期策略草稿；只有人工确认后才写入长期 Memory，并可创建不覆盖现有计划的下月草案。无 Key 时整条链路使用确定性 Mock。
+ContentOS 是面向本地生活短视频代运营团队的 AI 内容运营与项目管理平台。当前已完成第十五阶段 Ops & Cost：工作台按当前开发身份聚合真实行动项；运营中心以自然月进度计算客户履约风险并展示团队事实；AI 成本按多个维度汇总真实 Usage，Run 详情可追踪安全脱敏后的步骤、Context、模型、成本、Points、错误与实际重试。
 
 ## 本地运行
 
@@ -68,7 +68,9 @@ Embedding 使用 `EMBEDDING_BASE_URL` / `EMBEDDING_API_KEY` / `EMBEDDING_MODEL`�
 - `/ai/reviews`：先预览代码聚合的数据事实，再生成 AI 解释与策略；展示样本门槛、人工确认、Memory 写入和下月计划草案入口。
 - `/skills`、`/skills/[id]`：Skill 列表、Prompt/Schema 编辑、不可变版本历史、新版本式回滚和 Test Run。
 - `/settings/ai`：安全的百炼模式/模型概览、当前额度和可追加的模型价格配置。
-- `/ops/runs`：按 Run 类型和状态查询真实执行、Step、Usage、成本与计费 Points。
+- `/ops`：按月份查看计划目标、真实发布、剩余缺口、自然月进度、风险原因、团队事实和额度预警，并直接进入计划处理。
+- `/ops/ai-cost`：按日期汇总 AI 调用、Tokens、Points 和 estimated cost，支持 Skill、模型、客户、账号、用户维度；缺少价格时明确显示“未知”。
+- `/ops/runs`、`/ops/runs/[id]`：查询真实 Run，并查看步骤时间线、Context Snapshot、Skill 版本、模型、Token、成本、Points、错误、重试和最终业务对象。
 - `/team`：成员、角色、负责客户数与状态（Owner / Admin 可访问）。
 - 其他导航入口保留后续阶段空状态，不会返回 404。
 
@@ -77,7 +79,7 @@ Embedding 使用 `EMBEDDING_BASE_URL` / `EMBEDDING_API_KEY` / `EMBEDDING_MODEL`�
 - 默认数据库：`./data/contentos.db`，可通过 `DATABASE_PATH` 修改。
 - Schema：`db/schema.ts`。
 - Migration：`drizzle/`。
-- Seed：`npm run db:seed`，幂等写入带 `is_demo` 标识的组织、5 位可切换成员、客户授权关系、德祥楼业务层级、2026 年 9 月计划、结构化内容、3 条历史内容、6 条已确认档案 Memory、8 个系统 Skill 及版本快照、2026 演示 AI 额度，以及待拍摄和已拍摄的真实工作流演示数据。不预置虚构经营指标、Performance Snapshot 或模型价格。
+- Seed：`npm run db:seed`，幂等写入带 `is_demo` 标识的组织、5 位可切换成员、客户授权关系、德祥楼业务层级、2026 年 9 月计划、结构化内容、3 条历史内容、6 条已确认档案 Memory、8 个系统 Skill 及版本快照、2026 演示 AI 额度、运营风险阈值配置，以及待拍摄和已拍摄的真实工作流演示数据。不预置虚构经营指标、Performance Snapshot 或模型价格。
 - 恢复演示数据：`npm run db:reset`，或在开发环境调用 `POST /api/dev/reset` 并传入 `{ "confirm": "RESET_DEMO" }`。该操作只恢复固定 demo ID，不物理删除业务记录，也不绕过状态机重置已有内容的工作流状态。
 
 所有时间以 ISO 8601 文本保存，所有业务 ID 使用 UUID。核心层级通过包含 `organization_id` 的复合外键约束，服务层所有 ID 查询同时带组织条件。数据库文件被 Git 忽略，进程重启和页面刷新不会清空数据。
@@ -119,6 +121,7 @@ AI 基础设施接口：
 - `GET /api/settings/ai`
 - `POST /api/settings/ai/prices`
 - `GET /api/ops/runs`
+- `GET /api/ops/runs/[id]`
 
 Memory 与 Context 接口：
 
@@ -185,6 +188,13 @@ AI Content Planner 接口：
 - `POST /api/strategy-reviews/[id]/next-plan`
 - `GET/PUT /api/settings/strategy-review`（Owner / Admin 配置表现规律最少样本数）
 
+运营中心接口：
+
+- `GET /api/ops/overview`（Owner / Admin；支持 `year` + `month`）
+- `GET/PUT /api/ops/config`（PUT 仅 Owner / Admin）
+- `GET /api/ops/ai-cost`（Owner / Admin；支持 `from` + `to`）
+- `GET /api/ops/runs/[id]`（Owner / Admin；其他组织 ID 返回 404）
+
 导入单次上限 200 行 / 1 MB，去重策略为 `external_id`、`title_published_at` 或 `canonical`。正式写入只接受已持久化且无错误的预览批次；数据库唯一约束会再次阻止重复。Embedding 的 `canonical_text` 仅由 title + topic + angle + hook_text + core_message 组成。上述字段改变时旧向量在业务事务中标记 `stale`，随后重新建立 Active 向量。
 
 历史召回只查询同一 organization + account 的 `PUBLISHED` / `REVIEWED` Content。Top10 的 content_id、similarity、retrieval_method、source_hash 和 rank 保存到检索记录；规则综合语义、Topic、Angle、Hook 和 Core Message，Topic 权重仅 10%。最多 5 条进入 `duplicate_judge`，输出 content_id 必须属于本次 Top5，否则 Run 失败并使用确定性规则结果。去重页始终使用 `run_type=test`、`billed_points=0`。
@@ -208,6 +218,12 @@ Planner 的正式 Run 固定记录 `context_build`、`content_planner`、`candid
 互动率、团购点击率、订单转化率和千次播放 GMV 均由服务端代码计算。必要字段缺失或分母为 0 时返回 `null`，不会返回 `Infinity` 或 `NaN`。CSV 单次上限 500 行 / 1 MB，必须先映射表头、预览并修正全部错误行；提交只接受服务端保存的预览批次，重复时间点会跳过而不会覆盖旧数据。
 
 策略复盘遵循 Compute First, LLM Second。周期内每条有效发布只选择周期结束前最后一个累计 Snapshot，代码计算发布数量、样本数量、平均/中位播放、content type / hook type / content goal 分组表现、TOP/Bottom、团购 CTR、千次播放 GMV 与发布频率。AI 输入只包含冻结的聚合事实、TOP/Bottom 结构化摘要、当月目标、最多 20 条相关 Active Memory 和已确认策略 Memory，不包含完整脚本或全部 Snapshot。Production Run 记录 `metrics_aggregate`、`context_build`、`performance_analyzer`、`strategy_planner`、`persist_strategy_review`；两个 Skill 输出都经 Schema 校验，推荐内容配比再由代码校验合计 100。最终复盘未持久化时 usage 保留但不扣 Points。
+
+客户履约按 Monthly Plan 关联 Content 的真实 active Publish 计数。当前月进度使用 Asia/Shanghai 自然日除以当月实际天数；完成率与进度的容忍度、高风险差距、月底天数和剩余条数均来自组织级 `ops.config`。过去月份不再套用当前日期曲线：未完成的 active 计划标记 `overdue`，已停用计划标记 `closed_with_gap`。团队区只展示 Operator、Photographer、Editor 的可追溯事实，不计算绩效分。
+
+AI 额度按 70% / 90% / 100% 分级预警。收费 Production Run 在额度不足或达到 100% 时仍由服务端统一阻止；额度耗尽后的 Test/Eval 只允许在组织配置开启时由 Owner/Admin 继续执行，且始终不扣正式 Points。`ai_usage_logs.attempts` 保存实际调用尝试次数；成本汇总中只要存在无有效价格的调用，完整 estimated cost 就返回 `null`，同时保留已知部分供排查，绝不猜价。
+
+Run 列表与详情均在服务端移除 API Key、Authorization、Token、Base URL、数据库路径和服务器绝对路径。详情只读取同一 organization 的 Run 与 Context Snapshot，跨组织 ID 返回 404。
 
 `strategy_reviews` 的 AI 分析与数据事实分字段保存。Draft 或 Rejected 不会写 Memory；Confirmed 才创建 `confirmed_strategy` 来源的 strategy Memory。只有有效快照内容数达到管理员阈值，并且确认时显式勾选，才额外创建 `confirmed_performance` 来源的 performance_pattern Memory。下月计划以 `inactive` 状态创建为草案，沿用月度计划唯一约束，已存在时返回 409 且不覆盖。
 

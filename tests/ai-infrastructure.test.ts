@@ -8,6 +8,7 @@ import * as schema from '@/db/schema';
 import {
   aiPointLedger,
   aiUsageLogs,
+  appSettings,
   auditLogs,
   modelPriceConfigs,
   organizationAiQuotas,
@@ -379,6 +380,28 @@ describe('Run, usage, pricing and Points', () => {
     ).rejects.toMatchObject({ status: 402, code: 'AI_QUOTA_EXCEEDED' });
     expect(live.request).not.toHaveBeenCalled();
     expect(db.select().from(runs).all()).toEqual([]);
+  });
+
+  it('applies the configurable exhausted-quota policy to Test and Eval', async () => {
+    db.update(organizationAiQuotas)
+      .set({ usedPoints: 10 })
+      .where(eq(organizationAiQuotas.id, ids.quota))
+      .run();
+    await expect(service().testSkill(ids.skill, { input: { brief: '管理员测试' } })).resolves.toMatchObject({
+      marker: 'TEST_RUN', usage: { billedPoints: 0 },
+    });
+    await expect(service(ids.operator).testSkill(ids.skill, { input: { brief: '运营测试' } }))
+      .rejects.toMatchObject({ status: 402, code: 'AI_NON_PRODUCTION_QUOTA_POLICY_BLOCKED' });
+    db.insert(appSettings).values({
+      id: crypto.randomUUID(), organizationId: ids.organizationA, key: 'ops.config',
+      valueJson: JSON.stringify({
+        deliveryRisk: { toleranceRate: 0.08, highGapRate: 0.15, nearMonthEndDays: 5, nearMonthEndRemainingCount: 3 },
+        allowAdminTestEvalAtQuotaLimit: false,
+      }),
+      isSecret: false, isDemo: false, createdAt: now, updatedAt: now,
+    }).run();
+    await expect(service().executeEval({ skillCode: 'quality_checker', data: { brief: '管理员评测' } }))
+      .rejects.toMatchObject({ status: 402, code: 'AI_NON_PRODUCTION_QUOTA_POLICY_BLOCKED' });
   });
 
   it('bills a production Run only inside the successful business persistence transaction', async () => {

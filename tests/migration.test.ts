@@ -18,7 +18,7 @@ describe('SQLite migration', () => {
     expect(sqlite.prepare("select count(*) as value from sqlite_schema where type = 'table' and name = 'skills'").get()).toEqual({ value: 1 });
   });
 
-  it('creates every phase-fourteen table with organization scope', () => {
+  it('creates every phase-fifteen table with organization scope', () => {
     sqlite = new Database(':memory:');
     sqlite.pragma('foreign_keys = ON');
     const migrations = readdirSync(resolve('drizzle'))
@@ -105,6 +105,8 @@ describe('SQLite migration', () => {
     ]);
 
     const contentColumns = sqlite.prepare('pragma table_info(contents)').all() as Array<{ name: string }>;
+    const usageColumns = sqlite.prepare('pragma table_info(ai_usage_logs)').all() as Array<{ name: string }>;
+    expect(usageColumns.some(column => column.name === 'attempts')).toBe(true);
     expect(contentColumns.some(column => column.name === 'script')).toBe(false);
     expect(contentColumns.some(column => column.name === 'current_script_version_id')).toBe(true);
     expect(contentColumns.some(column => column.name === 'editor_id')).toBe(true);

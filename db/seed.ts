@@ -21,6 +21,7 @@ import {
   strategyPlannerInputJsonSchema,
   strategyPlannerOutputJsonSchema,
 } from '../lib/strategy-review/contracts';
+import { DEFAULT_OPS_CONFIG } from '../lib/ops/config';
 
 export const DEMO_IDS = {
   organization: '0198f744-8e18-7ae2-a780-52a0e20c1931',
@@ -30,6 +31,7 @@ export const DEMO_IDS = {
   editor: '0198f744-8e18-7ae2-a780-52a0e20c1935',
   phaseSetting: '0198f744-8e18-7ae2-a780-52a0e20c1936',
   strategyReviewSetting: '0198f744-8e18-7ae2-a780-52a0e20c1938',
+  opsSetting: '0198f744-8e18-7ae2-a780-52a0e20c1939',
   viewer: '0198f744-8e18-7ae2-a780-52a0e20c1937',
   client: '0198f744-8e18-7ae2-a780-52a0e20c1941',
   brand: '0198f744-8e18-7ae2-a780-52a0e20c1942',
@@ -420,7 +422,7 @@ export function seedDemoData(options: { reset?: boolean } = {}) {
         id: DEMO_IDS.phaseSetting,
         organizationId: DEMO_IDS.organization,
         key: 'product.phase',
-        valueJson: JSON.stringify({ phase: 14, label: 'AI Review & Strategy' }),
+        valueJson: JSON.stringify({ phase: 15, label: 'Ops & Cost' }),
         isSecret: false,
         isDemo: true,
         createdAt: now,
@@ -428,7 +430,7 @@ export function seedDemoData(options: { reset?: boolean } = {}) {
       })
       .onConflictDoUpdate({
         target: [appSettings.organizationId, appSettings.key],
-        set: { valueJson: JSON.stringify({ phase: 14, label: 'AI Review & Strategy' }), updatedAt: now },
+        set: { valueJson: JSON.stringify({ phase: 15, label: 'Ops & Cost' }), updatedAt: now },
       })
       .run();
 
@@ -438,6 +440,20 @@ export function seedDemoData(options: { reset?: boolean } = {}) {
         organizationId: DEMO_IDS.organization,
         key: 'strategy_review.config',
         valueJson: JSON.stringify({ minimumSampleSize: 5 }),
+        isSecret: false,
+        isDemo: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoNothing()
+      .run();
+
+    db.insert(appSettings)
+      .values({
+        id: DEMO_IDS.opsSetting,
+        organizationId: DEMO_IDS.organization,
+        key: 'ops.config',
+        valueJson: JSON.stringify(DEFAULT_OPS_CONFIG),
         isSecret: false,
         isDemo: true,
         createdAt: now,

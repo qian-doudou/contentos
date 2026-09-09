@@ -1,114 +1,36 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
+import { useEffect, useState } from 'react';
 import {
-  Activity, AlertTriangle, Bot, CheckCircle2, Network, PlayCircle,
-  RefreshCw, Route, Users,
+  Bot, CalendarClock, Camera, CheckCircle2, ChevronRight, Clapperboard,
+  Clock3, FileCheck2, Film, RefreshCw, Rocket, ShieldAlert,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
-import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { dashboardResponseSchema, type DashboardData, type DashboardRun } from '@/lib/contracts';
+import { dashboardDataSchema, devResetDataSchema } from '@/lib/contracts';
 import { roleLabels } from '@/lib/auth/contracts';
+import { EmptyData, ErrorData, fetchData, LoadingData, useApiData } from './master-data/common';
 
-const runTypeLabels = { production: '生产', test: '测试', eval: '评测' } as const;
-const statusLabels = {
+const runTypeLabels = { production: '正式', test: '测试', eval: '评测' } as const;
+const runStatusLabels = {
   queued: '排队中', running: '运行中', completed: '已完成', completed_with_warnings: '完成但有警告',
-  manual_review_required: '需人工审核', failed: '已失败', cancelled: '已取消',
+  manual_review_required: '需人工审核', failed: '失败', cancelled: '已取消',
 } as const;
+const urgencyLabels = { normal: '待处理', due_soon: '48h 内', overdue: '已延期', high: '高风险' } as const;
 
 function formatDate(value: string | null) {
-  if (!value) return '—';
-  return new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
-}
-
-function StatusBadge({ status }: { status: DashboardRun['status'] }) {
-  const variant = status === 'failed' ? 'destructive' : status === 'completed' ? 'secondary' : 'outline';
-  return <Badge variant={variant}>{statusLabels[status]}</Badge>;
-}
-
-function DashboardLoading() {
-  return (
-    <div className="space-y-6" aria-label="正在加载工作台">
-      <div className="space-y-3"><Skeleton className="h-3 w-36" /><Skeleton className="h-10 w-80 max-w-full" /><Skeleton className="h-5 w-[520px] max-w-full" /></div>
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{Array.from({ length: 4 }, (_, index) => <Skeleton className="h-36 rounded-xl" key={index} />)}</div>
-      <Skeleton className="h-80 rounded-xl" />
-    </div>
-  );
-}
-
-function DashboardError({ message, retry }: { message: string; retry: () => void }) {
-  return (
-    <div className="surface-card min-h-80">
-      <Empty className="min-h-72 border border-rose-200 bg-rose-50/50">
-        <EmptyHeader><EmptyMedia variant="icon"><AlertTriangle /></EmptyMedia><EmptyTitle>工作台数据加载失败</EmptyTitle><EmptyDescription>{message}</EmptyDescription></EmptyHeader>
-        <Button onClick={retry}><RefreshCw data-icon="inline-start" />重试</Button>
-      </Empty>
-    </div>
-  );
-}
-
-function RunStructureDrawer() {
-  const steps = [
-    { code: 'validate_input', title: '输入校验', detail: 'Zod 校验输入与业务对象' },
-    { code: 'execute', title: '执行任务', detail: '记录步骤输入、输出、耗时与警告' },
-    { code: 'persist_result', title: '持久化结果', detail: '结果与错误均按 Run 可追踪' },
-  ];
-  return (
-    <Sheet>
-      <SheetTrigger render={<Button variant="outline" />}><Route data-icon="inline-start" />查看 Run 结构</SheetTrigger>
-      <SheetContent className="w-full sm:max-w-lg">
-        <SheetHeader className="border-b"><SheetTitle>Run 追踪结构</SheetTitle><SheetDescription>这是执行规范说明，不是伪造的运行记录。</SheetDescription></SheetHeader>
-        <div className="space-y-0 px-5 py-2">
-          {steps.map((step, index) => (
-            <div className="relative flex gap-4 pb-7" key={step.code}>
-              {index < steps.length - 1 && <span className="absolute left-[15px] top-8 h-[calc(100%-1rem)] w-px bg-slate-200" />}
-              <span className="z-10 grid size-8 shrink-0 place-items-center rounded-full border border-cyan-200 bg-cyan-50 text-xs font-semibold text-cyan-700">{index + 1}</span>
-              <div className="pt-0.5"><p className="font-medium text-slate-900">{step.title}</p><code className="mt-1 block text-xs text-cyan-700">{step.code}</code><p className="mt-2 text-sm leading-6 text-slate-500">{step.detail}</p></div>
-            </div>
-          ))}
-        </div>
-      </SheetContent>
-    </Sheet>
-  );
+  return value ? new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : '—';
 }
 
 export function Dashboard() {
-  const [data, setData] = useState<DashboardData | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const state = useApiData('/api/dashboard', dashboardDataSchema);
   const [resetting, setResetting] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState('all');
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await fetch('/api/dashboard', { cache: 'no-store' });
-      const payload: unknown = await response.json();
-      if (!response.ok) {
-        const apiError = payload as { error?: { message?: string } };
-        throw new Error(apiError.error?.message || `HTTP ${response.status}`);
-      }
-      setData(dashboardResponseSchema.parse(payload).data);
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : '未知错误');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    const task = window.setTimeout(() => { void load(); }, 0);
-    return () => window.clearTimeout(task);
-  }, [load]);
+  const [notice, setNotice] = useState('');
 
   useEffect(() => {
     const context = document.modelContext;
@@ -117,113 +39,65 @@ export function Dashboard() {
     void Promise.resolve(context.registerTool({
       name: 'get_contentos_dashboard',
       title: '读取 ContentOS 工作台',
-      description: '读取当前组织、团队成员、Run 计数与基础设施状态。',
+      description: '读取当前身份的真实待办、延期风险、今日拍摄和履约风险。',
       inputSchema: { type: 'object', properties: {}, additionalProperties: false },
       annotations: { readOnlyHint: true, untrustedContentHint: false },
       execute: async () => {
-        const response = await fetch('/api/dashboard', { cache: 'no-store' });
-        const payload = dashboardResponseSchema.parse(await response.json());
-        return { organization: payload.data.organization?.name ?? null, metrics: payload.data.metrics, system: payload.data.system };
+        const data = await fetchData('/api/dashboard', dashboardDataSchema);
+        return { currentUser: data.workbench.currentUser.name, counts: data.workbench.counts, tasks: data.workbench.tasks };
       },
     }, { signal: lifecycle.signal })).catch(() => undefined);
     return () => lifecycle.abort();
   }, []);
 
-  const resetDemo = async () => {
+  async function resetDemo() {
     setResetting(true);
-    setNotice(null);
+    setNotice('');
     try {
-      const response = await fetch('/api/dev/reset', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ confirm: 'RESET_DEMO' }),
+      await fetchData('/api/dev/reset', devResetDataSchema, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ confirm: 'RESET_DEMO' }),
       });
-      const payload = await response.json() as { error?: { message?: string } };
-      if (!response.ok) throw new Error(payload.error?.message || '重置失败');
-      await load();
-      setNotice('演示数据已重置');
-    } catch (resetError) {
-      setNotice(resetError instanceof Error ? resetError.message : '重置失败');
+      state.reload();
+      setNotice('演示数据已恢复，工作台已重新计算。');
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : '重置失败');
     } finally {
       setResetting(false);
     }
-  };
+  }
 
-  const filteredRuns = useMemo(
-    () => data?.recentRuns.filter((run) => statusFilter === 'all' || run.status === statusFilter) ?? [],
-    [data, statusFilter],
-  );
+  if (state.loading) return <LoadingData />;
+  if (state.error) return <ErrorData error={state.error} retry={state.reload} />;
+  if (!state.data) return null;
+  const data = state.data;
+  const counts = data.workbench.counts;
+  const cards = [
+    { label: '今日待办', value: counts.todayTodo, helper: '按当前身份去重后的行动项', icon: CalendarClock, href: '#today-actions' },
+    { label: '待写脚本', value: counts.scriptsToWrite, helper: 'IDEA / SCRIPTING', icon: Clapperboard, href: '/contents?status=SCRIPTING' },
+    { label: '待审核', value: counts.pendingApproval, helper: '脚本或成片审核', icon: FileCheck2, href: '/contents?status=WAITING_APPROVAL' },
+    { label: '今日拍摄', value: counts.todayShoots, helper: '上海自然日排期', icon: Camera, href: '/shoots' },
+    { label: '待剪辑', value: counts.pendingEdits, helper: '已拍 / 剪辑中 / 返修', icon: Film, href: '/edits' },
+    { label: '待发布', value: counts.readyToPublish, helper: '已批准成片', icon: Rocket, href: '/contents?status=READY_TO_PUBLISH' },
+    { label: '即将延期', value: counts.dueSoon, helper: '未来 48 小时内', icon: Clock3, href: '/contents' },
+    { label: '高风险客户', value: counts.highRiskClients, helper: '履约显著落后', icon: ShieldAlert, href: '/ops' },
+  ] satisfies Array<{ label: string; value: number; helper: string; icon: LucideIcon; href: string }>;
 
-  if (loading) return <DashboardLoading />;
-  if (error || !data) return <DashboardError message={error || '未返回数据'} retry={() => void load()} />;
-
-  const metrics = [
-    { label: '组织', value: data.metrics.organizations, helper: '当前可见组织', icon: Network },
-    { label: '团队成员', value: data.metrics.users, helper: '活跃与停用成员', icon: Users },
-    { label: '运行记录', value: data.metrics.runs, helper: 'Production / Test / Eval', icon: PlayCircle },
-    { label: '失败运行', value: data.metrics.failedRuns, helper: '需要排查的 Run', icon: AlertTriangle },
-  ];
-
-  return (
-    <div className="space-y-6">
-      <section className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div><p className="eyebrow">工作台 / 系统总览</p><h1 className="page-title">内容运营控制台</h1><p className="page-description">{data.organization?.name ?? '尚未创建组织'} · 第六阶段 AI 基础设施</p></div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge className="h-7 bg-emerald-100 px-3 text-emerald-700"><CheckCircle2 />SQLite 已连接</Badge>
-          <Badge className="h-7 bg-cyan-100 px-3 text-cyan-800"><Bot />千问 {data.system.llmMode === 'mock' ? 'Mock' : 'Live'}</Badge>
-        </div>
-      </section>
-
-      {notice && <div aria-live="polite" className="rounded-xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm text-cyan-800">{notice}</div>}
-
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {metrics.map(({ label, value, helper, icon: Icon }) => (
-          <Card key={label}>
-            <CardHeader><CardDescription>{label}</CardDescription><CardTitle className="text-3xl tabular-nums">{value}</CardTitle><CardAction><span className="card-icon"><Icon /></span></CardAction></CardHeader>
-            <CardContent><p className="text-sm text-slate-500">{helper}</p></CardContent>
-          </Card>
-        ))}
-      </section>
-
-      <section className="grid gap-6 xl:grid-cols-[minmax(0,1.6fr)_minmax(320px,.8fr)]">
-        <Card>
-          <CardHeader className="border-b">
-            <div><p className="section-kicker">执行中心</p><CardTitle className="mt-1 text-xl">最近运行</CardTitle></div>
-            <CardAction className="flex items-center gap-2">
-              <Select value={statusFilter} onValueChange={(value) => setStatusFilter(String(value))}>
-                <SelectTrigger aria-label="按状态筛选" className="min-w-28"><SelectValue placeholder="全部状态" /></SelectTrigger>
-                <SelectContent><SelectItem value="all">全部状态</SelectItem><SelectItem value="queued">排队中</SelectItem><SelectItem value="running">运行中</SelectItem><SelectItem value="completed">已完成</SelectItem><SelectItem value="failed">已失败</SelectItem></SelectContent>
-              </Select>
-              <RunStructureDrawer />
-            </CardAction>
-          </CardHeader>
-          <CardContent className="px-0">
-            {filteredRuns.length === 0 ? (
-              <Empty className="min-h-60"><EmptyHeader><EmptyMedia variant="icon"><Activity /></EmptyMedia><EmptyTitle>暂无运行记录</EmptyTitle><EmptyDescription>首个内容或评测任务执行后，Run 与步骤时间线会出现在这里。</EmptyDescription></EmptyHeader></Empty>
-            ) : (
-              <Table><TableHeader><TableRow><TableHead>类型</TableHead><TableHead>对象</TableHead><TableHead>状态</TableHead><TableHead>开始时间</TableHead><TableHead className="text-right">步骤</TableHead></TableRow></TableHeader><TableBody>
-                {filteredRuns.map((run) => <TableRow key={run.id}><TableCell>{runTypeLabels[run.runType]}</TableCell><TableCell>{run.subjectType}</TableCell><TableCell><StatusBadge status={run.status} /></TableCell><TableCell>{formatDate(run.startedAt)}</TableCell><TableCell className="text-right tabular-nums">{run.steps.length}</TableCell></TableRow>)}
-              </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="border-b"><div><p className="section-kicker">组织成员</p><CardTitle className="mt-1 text-xl">{data.permissions.canReadTeam ? '演示团队' : '当前身份'}</CardTitle></div><CardAction><Badge variant="outline">{data.users.length} 人</Badge></CardAction></CardHeader>
-          <CardContent className="px-0">
-            {data.users.length === 0 ? <Empty className="min-h-60"><EmptyHeader><EmptyMedia variant="icon"><Users /></EmptyMedia><EmptyTitle>暂无团队成员</EmptyTitle><EmptyDescription>使用演示数据重置恢复基础团队。</EmptyDescription></EmptyHeader></Empty> : (
-              <Table><TableHeader><TableRow><TableHead>成员</TableHead><TableHead>角色</TableHead><TableHead className="text-right">状态</TableHead></TableRow></TableHeader><TableBody>{data.users.map((user) => <TableRow key={user.id}><TableCell className="font-medium">{user.name}</TableCell><TableCell className="text-slate-500">{roleLabels[user.role]}</TableCell><TableCell className="text-right"><Badge className="bg-emerald-50 text-emerald-700" variant="secondary">{user.status === 'active' ? '启用' : '停用'}</Badge></TableCell></TableRow>)}</TableBody></Table>
-            )}
-          </CardContent>
-        </Card>
-      </section>
-
-      {data.permissions.canResetDemo && <Card className="border-dashed bg-slate-50/70 shadow-none">
-        <CardHeader><CardTitle>本地演示数据</CardTitle><CardDescription>恢复固定 is_demo 主数据；此操作在数据库事务中执行。</CardDescription><CardAction>
-          <Dialog><DialogTrigger render={<Button variant="outline" />}><RefreshCw data-icon="inline-start" />恢复演示数据</DialogTrigger><DialogContent><DialogHeader><DialogTitle>确认恢复演示数据？</DialogTitle><DialogDescription>演示组织、成员和德祥楼业务层级将恢复为 seed 定义；非演示业务记录不会删除，本地数据库文件也会保留。</DialogDescription></DialogHeader><DialogFooter><DialogClose render={<Button variant="outline" />}>取消</DialogClose><DialogClose render={<Button variant="destructive" disabled={resetting} onClick={() => void resetDemo()} />}>{resetting ? '恢复中…' : '确认恢复'}</DialogClose></DialogFooter></DialogContent></Dialog>
-        </CardAction></CardHeader>
-      </Card>}
-    </div>
-  );
+  return <div className="space-y-6">
+    <header className="flex flex-wrap items-end justify-between gap-4">
+      <div><p className="eyebrow">工作台 / 个人行动中心</p><h1 className="page-title">{data.workbench.currentUser.name}，这是当前需要处理的事项</h1><p className="page-description">{data.organization?.name ?? '当前组织'} · {roleLabels[data.workbench.currentUser.role]} · 所有数字实时来自本地 SQLite</p></div>
+      <div className="flex flex-wrap gap-2"><Badge className="bg-emerald-50 text-emerald-700" variant="secondary"><CheckCircle2 />SQLite 已连接</Badge><Badge className="bg-cyan-50 text-cyan-800" variant="secondary"><Bot />千问 {data.system.llmMode === 'mock' ? 'Mock' : 'Live'}</Badge></div>
+    </header>
+    {notice && <div aria-live="polite" className="rounded-xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm text-cyan-800">{notice}</div>}
+    <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {cards.map(({ label, value, helper, icon: Icon, href }) => <Link className="block rounded-xl focus:outline-none focus:ring-2 focus:ring-cyan-500" href={href} key={label}><Card className="h-full transition hover:-translate-y-0.5 hover:border-cyan-200"><CardHeader><CardDescription>{label}</CardDescription><CardTitle className="text-3xl tabular-nums">{value}</CardTitle><CardAction><span className="card-icon"><Icon /></span></CardAction></CardHeader><CardContent><p className="text-sm text-slate-500">{helper}</p></CardContent></Card></Link>)}
+    </section>
+    <section className="grid gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(20rem,.5fr)]">
+      <Card id="today-actions" className="overflow-hidden scroll-mt-24"><CardHeader className="border-b"><div><CardTitle>今日行动清单</CardTitle><CardDescription>延期、高风险、48 小时内截止和当前流程任务按优先级排序。</CardDescription></div><CardAction><Badge variant="outline">{data.workbench.counts.todayTodo} 项</Badge></CardAction></CardHeader><CardContent className="px-0">
+        {data.workbench.tasks.length ? <Table><TableHeader><TableRow><TableHead>事项</TableHead><TableHead>紧急度</TableHead><TableHead>截止</TableHead><TableHead className="text-right">行动</TableHead></TableRow></TableHeader><TableBody>{data.workbench.tasks.map((task) => <TableRow key={task.id}><TableCell><p className="font-medium">{task.title}</p><p className="mt-1 text-xs text-slate-500">{task.detail}</p></TableCell><TableCell><Badge variant={task.urgency === 'overdue' ? 'destructive' : 'secondary'} className={task.urgency === 'high' ? 'bg-rose-50 text-rose-700' : task.urgency === 'due_soon' ? 'bg-amber-50 text-amber-700' : ''}>{urgencyLabels[task.urgency]}</Badge></TableCell><TableCell className="text-sm">{formatDate(task.dueAt)}</TableCell><TableCell className="text-right"><Button size="sm" variant="outline" nativeButton={false} render={<Link href={task.href} />}>处理<ChevronRight /></Button></TableCell></TableRow>)}</TableBody></Table> : <EmptyData title="当前没有待办" description="新增内容、审核、拍摄或发布任务后，工作台会自动出现行动项。" />}
+      </CardContent></Card>
+      <Card><CardHeader className="border-b"><div><CardTitle>高风险客户</CardTitle><CardDescription>来自当前自然月履约计算。</CardDescription></div></CardHeader><CardContent className="space-y-3 pt-5">{data.workbench.highRiskClients.length ? data.workbench.highRiskClients.map((client) => <Link className="block rounded-xl border border-rose-100 bg-rose-50/60 p-4 transition hover:border-rose-300" href={client.href} key={client.clientId}><div className="flex items-center justify-between gap-2"><p className="font-medium text-rose-900">{client.clientName}</p><Badge className="bg-white text-rose-700" variant="secondary">缺 {client.remainingCount} 条</Badge></div><p className="mt-2 text-xs leading-5 text-rose-700">{client.accountNames.join('、')}</p><p className="mt-1 text-xs leading-5 text-slate-500">{client.reasons.join('；')}</p></Link>) : <EmptyData title="暂无高风险客户" description="当前可见计划未触发高风险规则。" />}</CardContent></Card>
+    </section>
+    {data.permissions.canReadTeam && <Card className="overflow-hidden"><CardHeader className="border-b"><div><CardTitle>最近 Run</CardTitle><CardDescription>失败或警告可直接进入步骤时间线排查。</CardDescription></div><CardAction><Button variant="outline" nativeButton={false} render={<Link href="/ops/runs" />}>全部 Run</Button></CardAction></CardHeader><CardContent className="px-0">{data.recentRuns.length ? <Table><TableHeader><TableRow><TableHead>对象</TableHead><TableHead>类型</TableHead><TableHead>状态</TableHead><TableHead>时间</TableHead><TableHead className="text-right">行动</TableHead></TableRow></TableHeader><TableBody>{data.recentRuns.slice(0, 8).map((run) => <TableRow key={run.id}><TableCell className="font-mono text-xs">{run.subjectType}</TableCell><TableCell>{runTypeLabels[run.runType]}</TableCell><TableCell><Badge variant={run.status === 'failed' ? 'destructive' : 'outline'}>{runStatusLabels[run.status]}</Badge></TableCell><TableCell className="text-sm">{formatDate(run.createdAt)}</TableCell><TableCell className="text-right"><Button size="sm" variant="outline" nativeButton={false} render={<Link href={`/ops/runs/${run.id}`} />}>排查<ChevronRight /></Button></TableCell></TableRow>)}</TableBody></Table> : <EmptyData title="暂无 Run" description="执行 AI 测试或正式任务后，可从这里进入追踪详情。" />}</CardContent></Card>}
+    {data.permissions.canResetDemo && <Card className="border-dashed bg-slate-50/70 shadow-none"><CardHeader><div><CardTitle>本地演示数据</CardTitle><CardDescription>恢复固定 is_demo 主数据，不删除业务记录或清空数据库。</CardDescription></div><CardAction><Dialog><DialogTrigger render={<Button variant="outline" />}><RefreshCw />恢复演示数据</DialogTrigger><DialogContent><DialogHeader><DialogTitle>确认恢复演示数据？</DialogTitle><DialogDescription>演示组织、成员和德祥楼数据将按 seed 幂等恢复；已有工作流历史会保留。</DialogDescription></DialogHeader><DialogFooter><DialogClose render={<Button variant="outline" />}>取消</DialogClose><DialogClose render={<Button variant="destructive" disabled={resetting} onClick={() => void resetDemo()} />}>{resetting ? '恢复中…' : '确认恢复'}</DialogClose></DialogFooter></DialogContent></Dialog></CardAction></CardHeader></Card>}
+  </div>;
 }

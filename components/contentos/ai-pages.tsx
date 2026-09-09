@@ -109,6 +109,20 @@ export function SkillsPage() {
         <Button
           variant="outline"
           nativeButton={false}
+          render={<Link href="/ops" />}
+        >
+          运营中心
+        </Button>
+        <Button
+          variant="outline"
+          nativeButton={false}
+          render={<Link href="/ops/ai-cost" />}
+        >
+          AI 成本
+        </Button>
+        <Button
+          variant="outline"
+          nativeButton={false}
           render={<Link href="/ops/runs" />}
         >
           查看 Run
@@ -893,6 +907,8 @@ export function RunsPage() {
         title="Run 追踪"
         description="区分 Production、Test 与 Eval，查看 Step、usage、成本和计费 Points。"
       >
+        <Button variant="outline" nativeButton={false} render={<Link href="/ops" />}>运营中心</Button>
+        <Button variant="outline" nativeButton={false} render={<Link href="/ops/ai-cost" />}>AI 成本</Button>
         <Button
           variant="outline"
           nativeButton={false}
@@ -968,7 +984,7 @@ export function RunsPage() {
                     return (
                       <TableRow key={run.id}>
                         <TableCell>
-                          <p className="font-mono text-xs">{run.id}</p>
+                          <Link className="font-mono text-xs text-cyan-800 hover:underline" href={`/ops/runs/${run.id}`}>{run.id}</Link>
                           <p className="mt-1 text-xs text-slate-400">
                             {run.steps.length} Steps
                           </p>

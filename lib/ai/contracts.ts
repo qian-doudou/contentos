@@ -107,6 +107,7 @@ export const aiUsageLogSchema = z.object({
   outputTokens: z.number().int().nonnegative().nullable(),
   estimatedCost: z.number().nonnegative().nullable(),
   billedPoints: z.number().int().nonnegative(),
+  attempts: z.number().int().min(1).max(2),
   durationMs: z.number().int().nonnegative(),
   status: z.enum(aiUsageStatuses),
   isDemo: z.boolean(),

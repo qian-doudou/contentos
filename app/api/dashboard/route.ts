@@ -5,6 +5,7 @@ import { dashboardDataSchema } from '@/lib/contracts';
 import { fail, ok, requestId } from '@/lib/api/envelope';
 import { getLlmConfig } from '@/lib/llm/client';
 import { currentPermissions } from '@/lib/api/context';
+import { currentOps } from '@/lib/api/context';
 
 export const runtime = 'nodejs';
 
@@ -45,7 +46,8 @@ export async function GET(request: Request) {
       },
       users: userRows,
       recentRuns: runRows.map((run) => ({ ...run, steps: steps.filter((step) => step.runId === run.id) })),
-      system: { database: 'connected', llmMode: getLlmConfig().mode, phase: 14 },
+      workbench: currentOps(request).personalWorkbench(),
+      system: { database: 'connected', llmMode: getLlmConfig().mode, phase: 15 },
       permissions: {
         canResetDemo: permissions.has('system.dangerous'),
         canReadTeam: permissions.has('team.read'),

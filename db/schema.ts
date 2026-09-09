@@ -381,6 +381,8 @@ export const contents = sqliteTable('contents', {
   index('idx_contents_org_plan').on(t.organizationId, t.monthlyPlanId),
   index('idx_contents_org_publish_date').on(t.organizationId, t.plannedPublishDate),
   index('idx_contents_org_account_published').on(t.organizationId, t.accountId, t.publishedAt),
+  index('idx_contents_org_created_by_created').on(t.organizationId, t.createdBy, t.createdAt),
+  index('idx_contents_org_operator_deadline').on(t.organizationId, t.operatorId, t.deadline),
   foreignKey({
     columns: [t.organizationId, t.clientId, t.brandId, t.storeId, t.accountId],
     foreignColumns: [accounts.organizationId, accounts.clientId, accounts.brandId, accounts.storeId, accounts.id],
@@ -465,6 +467,7 @@ export const editVersions = sqliteTable('edit_versions', {
   uniqueIndex('uq_edit_versions_org_content_version').on(t.organizationId, t.contentId, t.versionNo),
   uniqueIndex('uq_edit_versions_org_content_id').on(t.organizationId, t.contentId, t.id),
   index('idx_edit_versions_org_content_created').on(t.organizationId, t.contentId, t.createdAt),
+  index('idx_edit_versions_org_creator_created').on(t.organizationId, t.createdBy, t.createdAt),
   foreignKey({ columns: [t.organizationId, t.contentId], foreignColumns: [contents.organizationId, contents.id] }),
   foreignKey({ columns: [t.organizationId, t.createdBy], foreignColumns: [users.organizationId, users.id] }),
   check('edit_versions_version_positive', sql`${t.versionNo} >= 1 AND typeof(${t.versionNo}) = 'integer'`),
@@ -1154,6 +1157,7 @@ export const aiUsageLogs = sqliteTable(
     outputTokens: integer('output_tokens'),
     estimatedCost: real('estimated_cost'),
     billedPoints: integer('billed_points').notNull().default(0),
+    attempts: integer('attempts').notNull().default(1),
     durationMs: integer('duration_ms').notNull(),
     status: text('status', { enum: aiUsageStatuses }).notNull(),
     isDemo: integer('is_demo', { mode: 'boolean' }).notNull().default(false),
@@ -1195,7 +1199,7 @@ export const aiUsageLogs = sqliteTable(
     ),
     check(
       'ai_usage_logs_values_valid',
-      sql`${t.skillVersion} >= 1 AND ${t.billedPoints} >= 0 AND ${t.durationMs} >= 0 AND (${t.estimatedCost} IS NULL OR ${t.estimatedCost} >= 0)`,
+      sql`${t.skillVersion} >= 1 AND ${t.billedPoints} >= 0 AND ${t.attempts} BETWEEN 1 AND 2 AND ${t.durationMs} >= 0 AND (${t.estimatedCost} IS NULL OR ${t.estimatedCost} >= 0)`,
     ),
   ],
 );

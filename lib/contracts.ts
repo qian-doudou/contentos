@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { organizationSchema, runSchema, runStepSchema, userSchema } from '@/db/validation';
+import { personalWorkbenchSchema } from '@/lib/ops/contracts';
 
 export const apiErrorSchema = z.object({
   code: z.string(),
@@ -17,6 +18,7 @@ export const dashboardDataSchema = z.object({
   }),
   users: z.array(userSchema),
   recentRuns: z.array(runSchema.extend({ steps: z.array(runStepSchema) })),
+  workbench: personalWorkbenchSchema,
   system: z.object({
     database: z.literal('connected'),
     llmMode: z.enum(['mock', 'live']),
