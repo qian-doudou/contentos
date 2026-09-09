@@ -1,6 +1,6 @@
 # ContentOS
 
-ContentOS 是面向本地生活短视频代运营团队的 AI 内容运营与项目管理平台。当前已完成第十二阶段 Edit Review：已拍摄 Content 可分配给 Editor，成片以不可变版本提交，内部或外部审核会在同一 SQLite 事务中推进状态、设置活动批准版本并追加状态日志。要求修改支持 REVISION 循环，READY_TO_PUBLISH 后提交新版会清空旧活动指针。本阶段不调用 AI，原有无 Key 确定性 Mock 能力保持不变。
+ContentOS 是面向本地生活短视频代运营团队的 AI 内容运营与项目管理平台。当前已完成第十三阶段 Publish & Performance：待发布内容可通过单一 SQLite 事务登记抖音发布记录、进入 PUBLISHED 并追加状态日志；发布后支持人工录入或 CSV 预览导入不可变表现快照，衍生指标由服务端确定性计算。本阶段不调用 AI，原有无 Key 确定性 Mock 能力保持不变。
 
 ## 本地运行
 
@@ -64,6 +64,7 @@ Embedding 使用 `EMBEDDING_BASE_URL` / `EMBEDDING_API_KEY` / `EMBEDDING_MODEL`�
 - `/shoots/[id]`：展示客户、门店、时间、运营、摄影与移动端 Checklist；每条直接读取排期时锁定的 Approved Script 版本、人物、产品与 shots。
 - `/edits`：Editor 工作台，按当前开发身份在服务端限定任务范围并支持状态筛选。
 - `/edits/[id]`：剪辑分配、开始处理、成片版本提交、Diff 式元数据列表和内外部审核记录。内容详情页同步提供该面板。
+- `/analytics/content`：按账号、时间、内容类型、Hook 类型和内容目标筛选表现快照，提供字段映射、逐行错误报告和确认写入式 CSV 导入。
 - `/skills`、`/skills/[id]`：Skill 列表、Prompt/Schema 编辑、不可变版本历史、新版本式回滚和 Test Run。
 - `/settings/ai`：安全的百炼模式/模型概览、当前额度和可追加的模型价格配置。
 - `/ops/runs`：按 Run 类型和状态查询真实执行、Step、Usage、成本与计费 Points。
@@ -75,7 +76,7 @@ Embedding 使用 `EMBEDDING_BASE_URL` / `EMBEDDING_API_KEY` / `EMBEDDING_MODEL`�
 - 默认数据库：`./data/contentos.db`，可通过 `DATABASE_PATH` 修改。
 - Schema：`db/schema.ts`。
 - Migration：`drizzle/`。
-- Seed：`npm run db:seed`，幂等写入带 `is_demo` 标识的组织、5 位可切换成员、客户授权关系、德祥楼业务层级、2026 年 9 月计划、结构化内容、3 条历史内容、6 条已确认档案 Memory、8 个系统 Skill 及版本快照、2026 演示 AI 额度，以及待拍摄和已拍摄的真实工作流演示数据。不预置虚构经营指标或模型价格。
+- Seed：`npm run db:seed`，幂等写入带 `is_demo` 标识的组织、5 位可切换成员、客户授权关系、德祥楼业务层级、2026 年 9 月计划、结构化内容、3 条历史内容、6 条已确认档案 Memory、8 个系统 Skill 及版本快照、2026 演示 AI 额度，以及待拍摄和已拍摄的真实工作流演示数据。不预置虚构经营指标、Performance Snapshot 或模型价格。
 - 恢复演示数据：`npm run db:reset`，或在开发环境调用 `POST /api/dev/reset` 并传入 `{ "confirm": "RESET_DEMO" }`。该操作只恢复固定 demo ID，不物理删除业务记录，也不绕过状态机重置已有内容的工作流状态。
 
 所有时间以 ISO 8601 文本保存，所有业务 ID 使用 UUID。核心层级通过包含 `organization_id` 的复合外键约束，服务层所有 ID 查询同时带组织条件。数据库文件被 Git 忽略，进程重启和页面刷新不会清空数据。
@@ -164,6 +165,15 @@ AI Content Planner 接口：
 - `POST /api/approvals/[id]/decision`（根据 approval type 分派脚本或成片内部审核）
 - `GET/POST /api/review/[token]`（根据 Token 只展示绑定的脚本或成片）
 
+发布与表现接口：
+
+- `POST /api/contents/[id]/publish`（事务内创建唯一有效发布记录并执行 `READY_TO_PUBLISH → PUBLISHED`）
+- `GET /api/contents/[id]/performance`
+- `POST /api/publishes/[id]/snapshots`（人工新增不可变快照）
+- `GET /api/analytics/content`
+- `POST /api/performance/import/preview`
+- `POST /api/performance/import/commit`
+
 导入单次上限 200 行 / 1 MB，去重策略为 `external_id`、`title_published_at` 或 `canonical`。正式写入只接受已持久化且无错误的预览批次；数据库唯一约束会再次阻止重复。Embedding 的 `canonical_text` 仅由 title + topic + angle + hook_text + core_message 组成。上述字段改变时旧向量在业务事务中标记 `stale`，随后重新建立 Active 向量。
 
 历史召回只查询同一 organization + account 的 `PUBLISHED` / `REVIEWED` Content。Top10 的 content_id、similarity、retrieval_method、source_hash 和 rank 保存到检索记录；规则综合语义、Topic、Angle、Hook 和 Core Message，Topic 权重仅 10%。最多 5 条进入 `duplicate_judge`，输出 content_id 必须属于本次 Top5，否则 Run 失败并使用确定性规则结果。去重页始终使用 `run_type=test`、`billed_points=0`。
@@ -181,6 +191,10 @@ Planner 的正式 Run 固定记录 `context_build`、`content_planner`、`candid
 `shoot_contents.approved_script_version_id` 锁定加入排期时的活动已批准脚本，后续草稿不会改变历史 Checklist。加入拍摄在同一事务中执行 `APPROVED → WAITING_SHOOT`；已拍执行 `WAITING_SHOOT → SHOT`；从未执行排期移除或取消执行 `WAITING_SHOOT → APPROVED`。缺镜和改期保留 `WAITING_SHOOT`，可关联同客户、同门店的新拍摄。Shoot 整体状态只由关联项组合推导，不接受 completed count 或任意状态写入。
 
 `edit_versions` 只记录 URL 或安全的相对本地素材引用，不上传大型视频文件。版本号在同一 Content 内唯一递增，数据库触发器禁止原地更新版本，并校验 Editor 角色、Content 版本指针和 `final_video` Approval 绑定。`SHOT → EDITING → WAITING_REVIEW`、退回到 `REVISION`、再提交和批准到 `READY_TO_PUBLISH` 均由统一服务在事务中写入状态日志，通用 transition API 无法绕过。
+
+`publishes` 在同一组织内对每个 Content 只允许一条 Active 记录，并校验抖音作品 ID 唯一性。创建发布记录、写入 `contents.published_at`、执行 `READY_TO_PUBLISH → PUBLISHED` 和追加状态日志属于同一事务；通用 transition API 仍不能直接发布。`performance_snapshots` 对 `publish_id + snapshot_time` 建唯一约束且禁止更新，人工录入与 CSV 提交都只新增历史时间点。
+
+互动率、团购点击率、订单转化率和千次播放 GMV 均由服务端代码计算。必要字段缺失或分母为 0 时返回 `null`，不会返回 `Infinity` 或 `NaN`。CSV 单次上限 500 行 / 1 MB，必须先映射表头、预览并修正全部错误行；提交只接受服务端保存的预览批次，重复时间点会跳过而不会覆盖旧数据。
 
 动态价格事实只允许来自 Context 的 L1–L3 已确认信息，不从历史内容摘要继承。模型生成 Context 中不存在的具体价格时，服务端会在展示前移除，并记录 `unverified_dynamic_fact` 质量提示；过期或 superseded 的旧价格不会进入 Context 或候选正文。
 
@@ -230,6 +244,6 @@ npm run build
 
 ## 当前边界
 
-当前未接入真实 OAuth、抖音 API、大型素材文件上传、Publish 记录、自动发布、GMV、支付、视频生成、自动剪辑、数字人或企业生产数据。外部审核 Token 适用于本地 MVP 演示，尚未接入短信、邮件或企业客户身份体系；原始 Token 只在提交或重发审核响应中返回一次。真实百炼调用需配置有效 Key 并为实际模型名添加价格配置；没有价格时成本显示“未知”。
+当前未接入真实 OAuth、抖音 API、大型素材文件上传、自动发布、自动同步 GMV、支付、视频生成、自动剪辑、数字人或企业生产数据。发布与表现数据只支持人工录入和 CSV 导入。外部审核 Token 适用于本地 MVP 演示，尚未接入短信、邮件或企业客户身份体系；原始 Token 只在提交或重发审核响应中返回一次。真实百炼调用需配置有效 Key 并为实际模型名添加价格配置；没有价格时成本显示“未知”。
 
-由于 Publish 业务对象尚未实现，`READY_TO_PUBLISH → PUBLISHED` 目前只会被服务端阻止，不伪造尚未存在的业务副作用。拍摄本阶段只记录结构化 Checklist 与缺镜说明，不存储视频或图片文件。
+拍摄阶段只记录结构化 Checklist 与缺镜说明，不存储视频或图片文件。Performance Snapshot 不支持更新或覆盖；录错数据时当前阶段需追加新的时间点保留历史，尚未实现冲正标记流程。

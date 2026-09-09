@@ -22,7 +22,7 @@ const navigation = [
   { href: '/shoots', label: '拍摄管理', icon: Camera },
   { href: '/edits', label: '剪辑审核', icon: Film },
   { href: '/ai', label: 'AI 运营', icon: Sparkles },
-  { href: '/analytics', label: '运营数据', icon: BarChart3 },
+  { href: '/analytics/content', label: '运营数据', icon: BarChart3 },
   { href: '/ops', label: '运营中心', icon: Activity },
   { href: '/skills', label: 'AI Skill', icon: Cpu },
   { href: '/evals', label: '评测中心', icon: FileCheck2 },
@@ -103,7 +103,7 @@ function AuthenticatedAppShell({ children }: { children: React.ReactNode }) {
             </div>
             <div className="hidden text-sm text-slate-500 lg:block">{identity.data?.organization.name || '正在读取组织…'}</div>
             <div className="flex items-center gap-3">
-              <span className="hidden rounded-full border border-slate-200 px-3 py-1.5 text-xs text-slate-500 xl:inline-flex">Phase 12 · Edit Review</span>
+              <span className="hidden rounded-full border border-slate-200 px-3 py-1.5 text-xs text-slate-500 xl:inline-flex">Phase 13 · Publish & Performance</span>
               {identity.loading ? <span className="text-xs text-slate-400">身份加载中…</span> : identity.error ? <Button variant="outline" size="sm" onClick={identity.reload}>身份加载失败</Button> : identity.data && (
                 identity.data.switchingEnabled
                   ? <NativeSelect aria-label="开发用户切换器" className="w-40" value={identity.data.currentUser.id} disabled={switching} onChange={event => void switchIdentity(event.target.value)}>

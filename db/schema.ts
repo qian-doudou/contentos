@@ -7,6 +7,7 @@ import {
   memoryScopeTypes, memorySourceTypes, memoryStatuses, memoryTypes, priceConfigStatuses,
   plannerCandidateStatuses, plannerQualityStatuses, plannerSessionStatuses,
   approvalReviewerTypes, approvalStatuses, approvalTypes, editAssetTypes, scriptSourceTypes,
+  performanceImportStatuses, publishPlatforms, publishStatuses,
   shootItemStatuses, shootStatuses,
 } from './constants';
 import {
@@ -471,6 +472,94 @@ export const editVersions = sqliteTable('edit_versions', {
   check('edit_versions_asset_url_present', sql`length(trim(${t.assetUrl})) > 0`),
 ]);
 
+export const publishes = sqliteTable('publishes', {
+  id: text('id').primaryKey(),
+  organizationId: text('organization_id').notNull().references(() => organizations.id),
+  contentId: text('content_id').notNull(),
+  platform: text('platform', { enum: publishPlatforms }).notNull(),
+  publishedAt: text('published_at').notNull(),
+  postUrl: text('post_url').notNull(),
+  platformPostId: text('platform_post_id'),
+  status: text('status', { enum: publishStatuses }).notNull().default('active'),
+  createdBy: text('created_by').notNull(),
+  isDemo: integer('is_demo', { mode: 'boolean' }).notNull().default(false),
+  createdAt: text('created_at').notNull(),
+}, (t) => [
+  uniqueIndex('uq_publishes_org_id').on(t.organizationId, t.id),
+  uniqueIndex('uq_publishes_active_content').on(t.organizationId, t.contentId)
+    .where(sql`${t.status} = 'active'`),
+  uniqueIndex('uq_publishes_platform_post').on(t.organizationId, t.platform, t.platformPostId)
+    .where(sql`${t.platformPostId} IS NOT NULL`),
+  index('idx_publishes_org_published').on(t.organizationId, t.publishedAt),
+  foreignKey({ columns: [t.organizationId, t.contentId], foreignColumns: [contents.organizationId, contents.id] }),
+  foreignKey({ columns: [t.organizationId, t.createdBy], foreignColumns: [users.organizationId, users.id] }),
+  check('publishes_platform_valid', sql`${t.platform} IN ('douyin')`),
+  check('publishes_status_valid', sql`${t.status} IN ('active', 'inactive')`),
+  check('publishes_post_url_present', sql`length(trim(${t.postUrl})) > 0`),
+]);
+
+export const performanceSnapshots = sqliteTable('performance_snapshots', {
+  id: text('id').primaryKey(),
+  organizationId: text('organization_id').notNull().references(() => organizations.id),
+  publishId: text('publish_id').notNull(),
+  snapshotTime: text('snapshot_time').notNull(),
+  views: integer('views'),
+  likes: integer('likes'),
+  comments: integer('comments'),
+  shares: integer('shares'),
+  favorites: integer('favorites'),
+  profileVisits: integer('profile_visits'),
+  groupbuyClicks: integer('groupbuy_clicks'),
+  orders: integer('orders'),
+  gmv: real('gmv'),
+  isDemo: integer('is_demo', { mode: 'boolean' }).notNull().default(false),
+  createdAt: text('created_at').notNull(),
+}, (t) => [
+  uniqueIndex('uq_performance_snapshots_org_id').on(t.organizationId, t.id),
+  uniqueIndex('uq_performance_snapshots_publish_time').on(t.organizationId, t.publishId, t.snapshotTime),
+  index('idx_performance_snapshots_org_time').on(t.organizationId, t.snapshotTime),
+  foreignKey({ columns: [t.organizationId, t.publishId], foreignColumns: [publishes.organizationId, publishes.id] }),
+  check('performance_snapshots_nonnegative', sql`
+    (${t.views} IS NULL OR (${t.views} >= 0 AND typeof(${t.views}) = 'integer')) AND
+    (${t.likes} IS NULL OR (${t.likes} >= 0 AND typeof(${t.likes}) = 'integer')) AND
+    (${t.comments} IS NULL OR (${t.comments} >= 0 AND typeof(${t.comments}) = 'integer')) AND
+    (${t.shares} IS NULL OR (${t.shares} >= 0 AND typeof(${t.shares}) = 'integer')) AND
+    (${t.favorites} IS NULL OR (${t.favorites} >= 0 AND typeof(${t.favorites}) = 'integer')) AND
+    (${t.profileVisits} IS NULL OR (${t.profileVisits} >= 0 AND typeof(${t.profileVisits}) = 'integer')) AND
+    (${t.groupbuyClicks} IS NULL OR (${t.groupbuyClicks} >= 0 AND typeof(${t.groupbuyClicks}) = 'integer')) AND
+    (${t.orders} IS NULL OR (${t.orders} >= 0 AND typeof(${t.orders}) = 'integer')) AND
+    (${t.gmv} IS NULL OR ${t.gmv} >= 0)
+  `),
+]);
+
+export const performanceImportBatches = sqliteTable('performance_import_batches', {
+  id: text('id').primaryKey(),
+  organizationId: text('organization_id').notNull().references(() => organizations.id),
+  sourceHash: text('source_hash').notNull(),
+  mappingJson: text('mapping_json', { mode: 'json' }).$type<Record<string, string>>().notNull(),
+  previewJson: text('preview_json', { mode: 'json' }).$type<unknown>().notNull(),
+  status: text('status', { enum: performanceImportStatuses }).notNull().default('previewed'),
+  totalRows: integer('total_rows').notNull(),
+  validRows: integer('valid_rows').notNull(),
+  duplicateRows: integer('duplicate_rows').notNull(),
+  invalidRows: integer('invalid_rows').notNull(),
+  committedRows: integer('committed_rows').notNull().default(0),
+  createdBy: text('created_by').notNull(),
+  isDemo: integer('is_demo', { mode: 'boolean' }).notNull().default(false),
+  committedAt: text('committed_at'),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+}, (t) => [
+  uniqueIndex('uq_performance_import_batches_org_id').on(t.organizationId, t.id),
+  index('idx_performance_import_batches_org_created').on(t.organizationId, t.createdAt),
+  foreignKey({ columns: [t.organizationId, t.createdBy], foreignColumns: [users.organizationId, users.id] }),
+  check('performance_import_batches_status_valid', sql`${t.status} IN ('previewed', 'committed', 'failed')`),
+  check('performance_import_batches_counts_valid', sql`
+    ${t.totalRows} >= 0 AND ${t.validRows} >= 0 AND ${t.duplicateRows} >= 0 AND ${t.invalidRows} >= 0 AND
+    ${t.committedRows} >= 0 AND ${t.validRows} + ${t.duplicateRows} + ${t.invalidRows} = ${t.totalRows}
+  `),
+]);
+
 export const approvals = sqliteTable('approvals', {
   id: text('id').primaryKey(),
   organizationId: text('organization_id').notNull().references(() => organizations.id),
@@ -642,6 +731,9 @@ export type ContentRow = typeof contents.$inferSelect;
 export type ContentStatusLogRow = typeof contentStatusLogs.$inferSelect;
 export type ScriptVersionRow = typeof scriptVersions.$inferSelect;
 export type EditVersionRow = typeof editVersions.$inferSelect;
+export type PublishRow = typeof publishes.$inferSelect;
+export type PerformanceSnapshotRow = typeof performanceSnapshots.$inferSelect;
+export type PerformanceImportBatchRow = typeof performanceImportBatches.$inferSelect;
 export type ApprovalRow = typeof approvals.$inferSelect;
 export type ShootRow = typeof shoots.$inferSelect;
 export type ShootContentRow = typeof shootContents.$inferSelect;

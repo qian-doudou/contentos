@@ -10,6 +10,7 @@ import { scriptApprovalService } from '@/lib/scripts/service';
 import { shootService } from '@/lib/shoots/service';
 import { editReviewService } from '@/lib/edits/service';
 import { approvalDecisionService, publicReviewService } from '@/lib/reviews/service';
+import { performanceService } from '@/lib/performance/service';
 import { z } from 'zod';
 
 export const DEV_USER_COOKIE = 'contentos_dev_user_id';
@@ -79,6 +80,10 @@ export function currentEdits(request?: Request) {
 export function currentApprovalDecisions(request?: Request) {
   const { organizationId, userId } = localContextIds(request);
   return approvalDecisionService(db, organizationId, userId);
+}
+export function currentPerformance(request?: Request) {
+  const { organizationId, userId } = localContextIds(request);
+  return performanceService(db, organizationId, userId);
 }
 export function publicReview() {
   return publicReviewService(db);

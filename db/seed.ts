@@ -373,7 +373,7 @@ export function seedDemoData(options: { reset?: boolean } = {}) {
         id: DEMO_IDS.phaseSetting,
         organizationId: DEMO_IDS.organization,
         key: 'product.phase',
-        valueJson: JSON.stringify({ phase: 12, label: 'Edit Review' }),
+        valueJson: JSON.stringify({ phase: 13, label: 'Publish & Performance' }),
         isSecret: false,
         isDemo: true,
         createdAt: now,
@@ -381,7 +381,7 @@ export function seedDemoData(options: { reset?: boolean } = {}) {
       })
       .onConflictDoUpdate({
         target: [appSettings.organizationId, appSettings.key],
-        set: { valueJson: JSON.stringify({ phase: 12, label: 'Edit Review' }), updatedAt: now },
+        set: { valueJson: JSON.stringify({ phase: 13, label: 'Publish & Performance' }), updatedAt: now },
       })
       .run();
 

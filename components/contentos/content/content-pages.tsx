@@ -21,6 +21,7 @@ import { ContentWorkflowPanel } from './workflow-panel';
 import { WorkflowBoard, WorkflowStatusBadge } from './workflow-board';
 import { ScriptApprovalPanel } from '@/components/contentos/script/script-approval-panel';
 import { EditReviewPanel } from '@/components/contentos/edit/edit-pages';
+import { ContentPerformancePanel } from '@/components/contentos/performance/performance-pages';
 
 const priorityTone: Record<string, string> = {
   low: 'bg-slate-100 text-slate-600', normal: 'bg-cyan-50 text-cyan-700', high: 'bg-amber-50 text-amber-700', urgent: 'bg-rose-50 text-rose-700',
@@ -114,5 +115,6 @@ export function ContentDetailPage({ id }: { id: string }) {
     <ScriptApprovalPanel contentId={item.id} onContentChanged={state.reload} />
     <ContentWorkflowPanel content={item} onChanged={state.reload} />
     <EditReviewPanel contentId={item.id} onContentChanged={state.reload} />
+    <ContentPerformancePanel contentId={item.id} onContentChanged={state.reload} />
   </div>;
 }

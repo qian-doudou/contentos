@@ -18,7 +18,7 @@ describe('SQLite migration', () => {
     expect(sqlite.prepare("select count(*) as value from sqlite_schema where type = 'table' and name = 'skills'").get()).toEqual({ value: 1 });
   });
 
-  it('creates every phase-twelve table with organization scope', () => {
+  it('creates every phase-thirteen table with organization scope', () => {
     sqlite = new Database(':memory:');
     sqlite.pragma('foreign_keys = ON');
     const migrations = readdirSync(resolve('drizzle'))
@@ -32,14 +32,16 @@ describe('SQLite migration', () => {
     expect(tables.map((row) => row.name)).toEqual([
       'accounts', 'ai_point_ledger', 'ai_usage_logs', 'app_settings', 'approvals', 'audit_logs', 'brands', 'client_members', 'clients',
       'content_embeddings', 'content_import_batches', 'content_status_logs', 'contents', 'context_snapshots', 'edit_versions', 'history_retrieval_items', 'history_retrievals',
-      'memories', 'model_price_configs', 'monthly_plans', 'organization_ai_quotas', 'organizations', 'planner_candidates', 'planner_sessions',
-      'run_steps', 'runs', 'script_versions', 'shoot_contents', 'shoots', 'skill_versions', 'skills', 'stores', 'users',
+      'memories', 'model_price_configs', 'monthly_plans', 'organization_ai_quotas', 'organizations', 'performance_import_batches',
+      'performance_snapshots', 'planner_candidates', 'planner_sessions', 'publishes', 'run_steps', 'runs', 'script_versions',
+      'shoot_contents', 'shoots', 'skill_versions', 'skills', 'stores', 'users',
     ]);
 
     for (const table of [
       'accounts', 'ai_point_ledger', 'ai_usage_logs', 'app_settings', 'approvals', 'audit_logs', 'brands', 'client_members', 'clients',
       'content_embeddings', 'content_import_batches', 'content_status_logs', 'contents', 'context_snapshots', 'edit_versions', 'history_retrieval_items', 'history_retrievals',
-      'memories', 'monthly_plans', 'organization_ai_quotas', 'planner_candidates', 'planner_sessions', 'run_steps', 'runs', 'script_versions', 'skill_versions',
+      'memories', 'monthly_plans', 'organization_ai_quotas', 'performance_import_batches', 'performance_snapshots', 'planner_candidates',
+      'planner_sessions', 'publishes', 'run_steps', 'runs', 'script_versions', 'skill_versions',
       'shoot_contents', 'shoots', 'skills', 'stores', 'users',
     ]) {
       const columns = sqlite.prepare(`pragma table_info(${table})`).all() as Array<{ name: string }>;
@@ -80,6 +82,12 @@ describe('SQLite migration', () => {
     expect(new Set(approvalForeignKeys.map(key => key.id)).size).toBe(3);
     const editVersionForeignKeys = sqlite.prepare('pragma foreign_key_list(edit_versions)').all() as Array<{ id: number }>;
     expect(new Set(editVersionForeignKeys.map(key => key.id)).size).toBe(3);
+    const publishForeignKeys = sqlite.prepare('pragma foreign_key_list(publishes)').all() as Array<{ id: number }>;
+    expect(new Set(publishForeignKeys.map(key => key.id)).size).toBe(3);
+    const performanceSnapshotForeignKeys = sqlite.prepare('pragma foreign_key_list(performance_snapshots)').all() as Array<{ id: number }>;
+    expect(new Set(performanceSnapshotForeignKeys.map(key => key.id)).size).toBe(2);
+    const performanceImportForeignKeys = sqlite.prepare('pragma foreign_key_list(performance_import_batches)').all() as Array<{ id: number }>;
+    expect(new Set(performanceImportForeignKeys.map(key => key.id)).size).toBe(2);
     const shootForeignKeys = sqlite.prepare('pragma foreign_key_list(shoots)').all() as Array<{ id: number }>;
     expect(new Set(shootForeignKeys.map(key => key.id)).size).toBe(5);
     const shootContentForeignKeys = sqlite.prepare('pragma foreign_key_list(shoot_contents)').all() as Array<{ id: number }>;
@@ -88,6 +96,7 @@ describe('SQLite migration', () => {
     expect(integrityTriggers.map(row => row.name)).toEqual([
       'validate_content_edit_pointers_update', 'validate_content_editor_insert', 'validate_content_editor_update',
       'validate_content_script_pointers_update', 'validate_final_video_approval_version_insert', 'validate_final_video_approval_version_update',
+      'validate_publish_ready_insert',
       'validate_script_approval_version_insert', 'validate_script_approval_version_update',
       'validate_shoot_content_identity_update', 'validate_shoot_content_insert',
       'validate_shoot_hierarchy_insert', 'validate_shoot_hierarchy_update',
