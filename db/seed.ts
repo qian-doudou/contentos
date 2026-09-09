@@ -15,6 +15,12 @@ import {
   qualitySkillInputJsonSchema, qualitySkillOutputJsonSchema,
 } from '../lib/planner/contracts';
 import { scriptGeneratorInputJsonSchema, scriptJsonOutputJsonSchema } from '../lib/scripts/contracts';
+import {
+  performanceAnalyzerInputJsonSchema,
+  performanceAnalyzerOutputJsonSchema,
+  strategyPlannerInputJsonSchema,
+  strategyPlannerOutputJsonSchema,
+} from '../lib/strategy-review/contracts';
 
 export const DEMO_IDS = {
   organization: '0198f744-8e18-7ae2-a780-52a0e20c1931',
@@ -23,6 +29,7 @@ export const DEMO_IDS = {
   photographer: '0198f744-8e18-7ae2-a780-52a0e20c1934',
   editor: '0198f744-8e18-7ae2-a780-52a0e20c1935',
   phaseSetting: '0198f744-8e18-7ae2-a780-52a0e20c1936',
+  strategyReviewSetting: '0198f744-8e18-7ae2-a780-52a0e20c1938',
   viewer: '0198f744-8e18-7ae2-a780-52a0e20c1937',
   client: '0198f744-8e18-7ae2-a780-52a0e20c1941',
   brand: '0198f744-8e18-7ae2-a780-52a0e20c1942',
@@ -59,6 +66,8 @@ const duplicateJudgeV2VersionId = '0198f744-8e18-7ae2-a780-52a0e20c1b14';
 const contentPlannerV2VersionId = '0198f744-8e18-7ae2-a780-52a0e20c1b11';
 const qualityCheckerV2VersionId = '0198f744-8e18-7ae2-a780-52a0e20c1b18';
 const scriptGeneratorV2VersionId = '0198f744-8e18-7ae2-a780-52a0e20c1b12';
+const performanceAnalyzerV2VersionId = '0198f744-8e18-7ae2-a780-52a0e20c1b16';
+const strategyPlannerV2VersionId = '0198f744-8e18-7ae2-a780-52a0e20c1b17';
 const externalDedupKey = (value: string) =>
   `external_id:${createHash('sha256').update(value.trim().toLocaleLowerCase()).digest('hex')}`;
 
@@ -353,6 +362,44 @@ export function seedDemoData(options: { reset?: boolean } = {}) {
         createdBy: null, isDemo: false, createdAt: now }).onConflictDoNothing().run();
     }
 
+    const performanceAnalyzer = db.select().from(skills).where(and(
+      eq(skills.code, 'performance_analyzer'), isNull(skills.organizationId),
+    )).get();
+    if (performanceAnalyzer?.currentVersion === 1) {
+      const v2 = {
+        systemPrompt: '你是 ContentOS 表现分析器。所有数值均已由代码聚合，你只能解释输入事实，不得重算、补造或推断不存在的指标。必须区分数据事实、模式解释与样本量限制，只返回符合输出 Schema 的 JSON。',
+        userPromptTemplate: '解释以下已冻结的聚合指标、TOP/Bottom 结构化摘要与有效 Memory：\n{{input_json}}',
+        inputSchemaJson: performanceAnalyzerInputJsonSchema,
+        outputSchemaJson: performanceAnalyzerOutputJsonSchema,
+        modelProfile: 'standard' as const,
+        pointCost: 2,
+      };
+      db.update(skills).set({ ...v2, description: '解释代码聚合的内容表现事实并明确样本量限制。', currentVersion: 2, updatedAt: now })
+        .where(and(eq(skills.id, performanceAnalyzer.id), eq(skills.currentVersion, 1))).run();
+      db.insert(skillVersions).values({ id: performanceAnalyzerV2VersionId, organizationId: null,
+        skillId: performanceAnalyzer.id, version: 2, ...v2, changeReason: '接入阶段十四 Compute First 表现复盘协议',
+        createdBy: null, isDemo: false, createdAt: now }).onConflictDoNothing().run();
+    }
+
+    const strategyPlanner = db.select().from(skills).where(and(
+      eq(skills.code, 'strategy_planner'), isNull(skills.organizationId),
+    )).get();
+    if (strategyPlanner?.currentVersion === 1) {
+      const v2 = {
+        systemPrompt: '你是 ContentOS 策略规划器。只能基于代码聚合事实、表现分析、当前月度目标和已确认 Memory 给出下一周期建议。recommended_content_mix 使用稳定英文 content_type，百分比合计必须等于 100。只返回符合输出 Schema 的 JSON。',
+        userPromptTemplate: '根据已验证的事实与人工确认上下文制定下一周期策略：\n{{input_json}}',
+        inputSchemaJson: strategyPlannerInputJsonSchema,
+        outputSchemaJson: strategyPlannerOutputJsonSchema,
+        modelProfile: 'strong' as const,
+        pointCost: 3,
+      };
+      db.update(skills).set({ ...v2, description: '基于程序指标与已确认记忆生成下一周期结构化策略。', currentVersion: 2, updatedAt: now })
+        .where(and(eq(skills.id, strategyPlanner.id), eq(skills.currentVersion, 1))).run();
+      db.insert(skillVersions).values({ id: strategyPlannerV2VersionId, organizationId: null,
+        skillId: strategyPlanner.id, version: 2, ...v2, changeReason: '接入阶段十四下一周期策略协议',
+        createdBy: null, isDemo: false, createdAt: now }).onConflictDoNothing().run();
+    }
+
     db.insert(organizationAiQuotas)
       .values({
         id: DEMO_IDS.aiQuota,
@@ -373,7 +420,7 @@ export function seedDemoData(options: { reset?: boolean } = {}) {
         id: DEMO_IDS.phaseSetting,
         organizationId: DEMO_IDS.organization,
         key: 'product.phase',
-        valueJson: JSON.stringify({ phase: 13, label: 'Publish & Performance' }),
+        valueJson: JSON.stringify({ phase: 14, label: 'AI Review & Strategy' }),
         isSecret: false,
         isDemo: true,
         createdAt: now,
@@ -381,8 +428,22 @@ export function seedDemoData(options: { reset?: boolean } = {}) {
       })
       .onConflictDoUpdate({
         target: [appSettings.organizationId, appSettings.key],
-        set: { valueJson: JSON.stringify({ phase: 13, label: 'Publish & Performance' }), updatedAt: now },
+        set: { valueJson: JSON.stringify({ phase: 14, label: 'AI Review & Strategy' }), updatedAt: now },
       })
+      .run();
+
+    db.insert(appSettings)
+      .values({
+        id: DEMO_IDS.strategyReviewSetting,
+        organizationId: DEMO_IDS.organization,
+        key: 'strategy_review.config',
+        valueJson: JSON.stringify({ minimumSampleSize: 5 }),
+        isSecret: false,
+        isDemo: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoNothing()
       .run();
 
     const demoMetadata = { organizationId: DEMO_IDS.organization, isDemo: true, createdAt: now, updatedAt: now };

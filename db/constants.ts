@@ -27,6 +27,7 @@ export const editAssetTypes = ['url', 'local_reference'] as const;
 export const publishPlatforms = ['douyin'] as const;
 export const publishStatuses = ['active', 'inactive'] as const;
 export const performanceImportStatuses = ['previewed', 'committed', 'failed'] as const;
+export const strategyReviewStatuses = ['draft', 'confirmed', 'rejected'] as const;
 export const approvalTypes = ['script', 'final_video'] as const;
 export const approvalStatuses = ['pending', 'approved', 'changes_requested', 'rejected', 'expired'] as const;
 export const approvalReviewerTypes = ['internal_user', 'external_client'] as const;

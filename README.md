@@ -1,6 +1,6 @@
 # ContentOS
 
-ContentOS 是面向本地生活短视频代运营团队的 AI 内容运营与项目管理平台。当前已完成第十三阶段 Publish & Performance：待发布内容可通过单一 SQLite 事务登记抖音发布记录、进入 PUBLISHED 并追加状态日志；发布后支持人工录入或 CSV 预览导入不可变表现快照，衍生指标由服务端确定性计算。本阶段不调用 AI，原有无 Key 确定性 Mock 能力保持不变。
+ContentOS 是面向本地生活短视频代运营团队的 AI 内容运营与项目管理平台。当前已完成第十四阶段 AI Review & Strategy：系统先按账号与周期从 Performance Snapshot 确定性聚合表现事实，再由百炼千问解释指标并生成下一周期策略草稿；只有人工确认后才写入长期 Memory，并可创建不覆盖现有计划的下月草案。无 Key 时整条链路使用确定性 Mock。
 
 ## 本地运行
 
@@ -65,6 +65,7 @@ Embedding 使用 `EMBEDDING_BASE_URL` / `EMBEDDING_API_KEY` / `EMBEDDING_MODEL`�
 - `/edits`：Editor 工作台，按当前开发身份在服务端限定任务范围并支持状态筛选。
 - `/edits/[id]`：剪辑分配、开始处理、成片版本提交、Diff 式元数据列表和内外部审核记录。内容详情页同步提供该面板。
 - `/analytics/content`：按账号、时间、内容类型、Hook 类型和内容目标筛选表现快照，提供字段映射、逐行错误报告和确认写入式 CSV 导入。
+- `/ai/reviews`：先预览代码聚合的数据事实，再生成 AI 解释与策略；展示样本门槛、人工确认、Memory 写入和下月计划草案入口。
 - `/skills`、`/skills/[id]`：Skill 列表、Prompt/Schema 编辑、不可变版本历史、新版本式回滚和 Test Run。
 - `/settings/ai`：安全的百炼模式/模型概览、当前额度和可追加的模型价格配置。
 - `/ops/runs`：按 Run 类型和状态查询真实执行、Step、Usage、成本与计费 Points。
@@ -174,6 +175,16 @@ AI Content Planner 接口：
 - `POST /api/performance/import/preview`
 - `POST /api/performance/import/commit`
 
+策略复盘接口：
+
+- `GET/POST /api/strategy-reviews`（列表 / 生成 Production Run）
+- `GET /api/strategy-reviews/aggregate`（只运行代码聚合，不调用 AI）
+- `GET /api/strategy-reviews/[id]`
+- `POST /api/strategy-reviews/[id]/confirm`
+- `POST /api/strategy-reviews/[id]/reject`
+- `POST /api/strategy-reviews/[id]/next-plan`
+- `GET/PUT /api/settings/strategy-review`（Owner / Admin 配置表现规律最少样本数）
+
 导入单次上限 200 行 / 1 MB，去重策略为 `external_id`、`title_published_at` 或 `canonical`。正式写入只接受已持久化且无错误的预览批次；数据库唯一约束会再次阻止重复。Embedding 的 `canonical_text` 仅由 title + topic + angle + hook_text + core_message 组成。上述字段改变时旧向量在业务事务中标记 `stale`，随后重新建立 Active 向量。
 
 历史召回只查询同一 organization + account 的 `PUBLISHED` / `REVIEWED` Content。Top10 的 content_id、similarity、retrieval_method、source_hash 和 rank 保存到检索记录；规则综合语义、Topic、Angle、Hook 和 Core Message，Topic 权重仅 10%。最多 5 条进入 `duplicate_judge`，输出 content_id 必须属于本次 Top5，否则 Run 失败并使用确定性规则结果。去重页始终使用 `run_type=test`、`billed_points=0`。
@@ -195,6 +206,10 @@ Planner 的正式 Run 固定记录 `context_build`、`content_planner`、`candid
 `publishes` 在同一组织内对每个 Content 只允许一条 Active 记录，并校验抖音作品 ID 唯一性。创建发布记录、写入 `contents.published_at`、执行 `READY_TO_PUBLISH → PUBLISHED` 和追加状态日志属于同一事务；通用 transition API 仍不能直接发布。`performance_snapshots` 对 `publish_id + snapshot_time` 建唯一约束且禁止更新，人工录入与 CSV 提交都只新增历史时间点。
 
 互动率、团购点击率、订单转化率和千次播放 GMV 均由服务端代码计算。必要字段缺失或分母为 0 时返回 `null`，不会返回 `Infinity` 或 `NaN`。CSV 单次上限 500 行 / 1 MB，必须先映射表头、预览并修正全部错误行；提交只接受服务端保存的预览批次，重复时间点会跳过而不会覆盖旧数据。
+
+策略复盘遵循 Compute First, LLM Second。周期内每条有效发布只选择周期结束前最后一个累计 Snapshot，代码计算发布数量、样本数量、平均/中位播放、content type / hook type / content goal 分组表现、TOP/Bottom、团购 CTR、千次播放 GMV 与发布频率。AI 输入只包含冻结的聚合事实、TOP/Bottom 结构化摘要、当月目标、最多 20 条相关 Active Memory 和已确认策略 Memory，不包含完整脚本或全部 Snapshot。Production Run 记录 `metrics_aggregate`、`context_build`、`performance_analyzer`、`strategy_planner`、`persist_strategy_review`；两个 Skill 输出都经 Schema 校验，推荐内容配比再由代码校验合计 100。最终复盘未持久化时 usage 保留但不扣 Points。
+
+`strategy_reviews` 的 AI 分析与数据事实分字段保存。Draft 或 Rejected 不会写 Memory；Confirmed 才创建 `confirmed_strategy` 来源的 strategy Memory。只有有效快照内容数达到管理员阈值，并且确认时显式勾选，才额外创建 `confirmed_performance` 来源的 performance_pattern Memory。下月计划以 `inactive` 状态创建为草案，沿用月度计划唯一约束，已存在时返回 409 且不覆盖。
 
 动态价格事实只允许来自 Context 的 L1–L3 已确认信息，不从历史内容摘要继承。模型生成 Context 中不存在的具体价格时，服务端会在展示前移除，并记录 `unverified_dynamic_fact` 质量提示；过期或 superseded 的旧价格不会进入 Context 或候选正文。
 
@@ -230,7 +245,7 @@ Skill 的 Input/Output Schema 在写入和执行时都经 Zod 校验。Productio
 - Content：《老板带你认识鲁西南铜锅涮》待办内容，另有 3 条用于 Top10 召回的演示历史内容；均不含脚本正文或虚构经营指标
 - Shoot：2026-09-10 德祥楼待拍演示排期；另有 1 场已完成拍摄及状态日志
 - Edit：《老板带你看传统铜锅怎么开锅》已处于 `SHOT`，分配给剪辑 A，可直接演示开始剪辑与成片审核闭环
-- AI：8 个系统内置 Skill，每个含 v1 快照；演示组织当期 1000 Points，初始已用 0
+- AI：8 个系统内置 Skill；Planner、脚本、去重、质量、表现分析和策略规划均保留 v1 并使用阶段化 v2 协议；演示组织当期 1000 Points，初始已用 0
 - Memory：从德祥楼 Brand/Account 已确认字段初始化 6 条，`source_type=brand_profile`、`confidence=1`
 
 ## 质量检查
@@ -244,6 +259,6 @@ npm run build
 
 ## 当前边界
 
-当前未接入真实 OAuth、抖音 API、大型素材文件上传、自动发布、自动同步 GMV、支付、视频生成、自动剪辑、数字人或企业生产数据。发布与表现数据只支持人工录入和 CSV 导入。外部审核 Token 适用于本地 MVP 演示，尚未接入短信、邮件或企业客户身份体系；原始 Token 只在提交或重发审核响应中返回一次。真实百炼调用需配置有效 Key 并为实际模型名添加价格配置；没有价格时成本显示“未知”。
+当前未接入真实 OAuth、抖音 API、大型素材文件上传、自动发布、自动同步 GMV、支付、视频生成、自动剪辑、数字人或企业生产数据。发布与表现数据只支持人工录入和 CSV 导入；Seed 不预置虚构经营指标，因此首次策略复盘前需要先录入有效 Snapshot。外部审核 Token 适用于本地 MVP 演示，尚未接入短信、邮件或企业客户身份体系；原始 Token 只在提交或重发审核响应中返回一次。真实百炼调用需配置有效 Key 并为实际模型名添加价格配置；没有价格时成本显示“未知”。
 
 拍摄阶段只记录结构化 Checklist 与缺镜说明，不存储视频或图片文件。Performance Snapshot 不支持更新或覆盖；录错数据时当前阶段需追加新的时间点保留历史，尚未实现冲正标记流程。

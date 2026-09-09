@@ -7,7 +7,7 @@ import {
   memoryScopeTypes, memorySourceTypes, memoryStatuses, memoryTypes, priceConfigStatuses,
   plannerCandidateStatuses, plannerQualityStatuses, plannerSessionStatuses,
   approvalReviewerTypes, approvalStatuses, approvalTypes, editAssetTypes, scriptSourceTypes,
-  performanceImportStatuses, publishPlatforms, publishStatuses,
+  performanceImportStatuses, publishPlatforms, publishStatuses, strategyReviewStatuses,
   shootItemStatuses, shootStatuses,
 } from './constants';
 import {
@@ -559,6 +559,42 @@ export const performanceImportBatches = sqliteTable('performance_import_batches'
     ${t.committedRows} >= 0 AND ${t.validRows} + ${t.duplicateRows} + ${t.invalidRows} = ${t.totalRows}
   `),
 ]);
+
+export const strategyReviews = sqliteTable('strategy_reviews', {
+  id: text('id').primaryKey(),
+  organizationId: text('organization_id').notNull().references(() => organizations.id),
+  accountId: text('account_id').notNull(),
+  periodStart: text('period_start').notNull(),
+  periodEnd: text('period_end').notNull(),
+  metricsSnapshotJson: text('metrics_snapshot_json', { mode: 'json' }).$type<Record<string, unknown>>().notNull(),
+  previousStrategyMemoryIdsJson: text('previous_strategy_memory_ids_json', { mode: 'json' }).$type<string[]>().notNull().default([]),
+  aiAnalysisJson: text('ai_analysis_json', { mode: 'json' }).$type<Record<string, unknown>>().notNull(),
+  aiStrategyJson: text('ai_strategy_json', { mode: 'json' }).$type<Record<string, unknown>>().notNull(),
+  status: text('status', { enum: strategyReviewStatuses }).notNull().default('draft'),
+  confirmedBy: text('confirmed_by'),
+  confirmedAt: text('confirmed_at'),
+  isDemo: integer('is_demo', { mode: 'boolean' }).notNull().default(false),
+  createdAt: text('created_at').notNull(),
+}, (t) => [
+  uniqueIndex('uq_strategy_reviews_org_id').on(t.organizationId, t.id),
+  index('idx_strategy_reviews_org_account_period').on(t.organizationId, t.accountId, t.periodStart, t.periodEnd),
+  index('idx_strategy_reviews_org_status_created').on(t.organizationId, t.status, t.createdAt),
+  foreignKey({ columns: [t.organizationId, t.accountId], foreignColumns: [accounts.organizationId, accounts.id] }),
+  foreignKey({ columns: [t.organizationId, t.confirmedBy], foreignColumns: [users.organizationId, users.id] }),
+  check('strategy_reviews_period_valid', sql`${t.periodStart} < ${t.periodEnd}`),
+  check('strategy_reviews_status_valid', sql`${t.status} IN ('draft', 'confirmed', 'rejected')`),
+  check('strategy_reviews_confirmed_fields', sql`(
+    ${t.status} = 'confirmed' AND ${t.confirmedBy} IS NOT NULL AND ${t.confirmedAt} IS NOT NULL
+  ) OR (
+    ${t.status} <> 'confirmed' AND ${t.confirmedBy} IS NULL AND ${t.confirmedAt} IS NULL
+  )`),
+  check('strategy_reviews_memory_ids_array', sql`json_type(${t.previousStrategyMemoryIdsJson}) = 'array'`),
+  check('strategy_reviews_metrics_object', sql`json_type(${t.metricsSnapshotJson}) = 'object'`),
+  check('strategy_reviews_analysis_object', sql`json_type(${t.aiAnalysisJson}) = 'object'`),
+  check('strategy_reviews_strategy_object', sql`json_type(${t.aiStrategyJson}) = 'object'`),
+]);
+
+export type StrategyReviewRow = typeof strategyReviews.$inferSelect;
 
 export const approvals = sqliteTable('approvals', {
   id: text('id').primaryKey(),

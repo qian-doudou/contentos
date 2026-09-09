@@ -195,7 +195,7 @@ export function ContentAnalyticsPage() {
     } catch (reason) { setMessage(errorText(reason)); } finally { setPending(false); }
   }
 
-  return <div className="space-y-6"><PerformanceHeading title="内容表现" description="按账号和内容结构筛选人工快照；缺失或零分母指标统一显示为空。"><Button variant="outline" nativeButton={false} render={<Link href="/contents" />}>内容档案</Button></PerformanceHeading>
+  return <div className="space-y-6"><PerformanceHeading title="内容表现" description="按账号和内容结构筛选人工快照；缺失或零分母指标统一显示为空。"><Button variant="outline" nativeButton={false} render={<Link href="/ai/reviews" />}>策略复盘</Button><Button variant="outline" nativeButton={false} render={<Link href="/contents" />}>内容档案</Button></PerformanceHeading>
     {state.loading ? <LoadingData /> : state.error ? <ErrorData error={state.error} retry={state.reload} /> : state.data && <>
       <form className="surface-card grid items-end gap-3 sm:grid-cols-2 xl:grid-cols-7" key={query} onSubmit={filter}>
         <label className="space-y-1.5 text-sm" htmlFor="analytics-account">账号<NativeSelect id="analytics-account" name="accountId" defaultValue={params.get('accountId') || ''}><option value="">全部账号</option>{state.data.options.accounts.map(item => <option value={item.id} key={item.id}>{item.clientName} / {item.accountName}</option>)}</NativeSelect></label>
