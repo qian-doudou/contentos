@@ -18,7 +18,7 @@ describe('SQLite migration', () => {
     expect(sqlite.prepare("select count(*) as value from sqlite_schema where type = 'table' and name = 'skills'").get()).toEqual({ value: 1 });
   });
 
-  it('creates every phase-fifteen table with organization scope', () => {
+  it('creates every phase-sixteen table with organization scope', () => {
     sqlite = new Database(':memory:');
     sqlite.pragma('foreign_keys = ON');
     const migrations = readdirSync(resolve('drizzle'))
@@ -30,18 +30,20 @@ describe('SQLite migration', () => {
 
     const tables = sqlite.prepare("select name from sqlite_schema where type = 'table' order by name").all() as Array<{ name: string }>;
     expect(tables.map((row) => row.name)).toEqual([
-      'accounts', 'ai_point_ledger', 'ai_usage_logs', 'app_settings', 'approvals', 'audit_logs', 'brands', 'client_members', 'clients',
-      'content_embeddings', 'content_import_batches', 'content_status_logs', 'contents', 'context_snapshots', 'edit_versions', 'history_retrieval_items', 'history_retrievals',
-      'memories', 'model_price_configs', 'monthly_plans', 'organization_ai_quotas', 'organizations', 'performance_import_batches',
-      'performance_snapshots', 'planner_candidates', 'planner_sessions', 'publishes', 'run_steps', 'runs', 'script_versions',
+      'accounts', 'ai_point_ledger', 'ai_usage_logs', 'app_settings', 'approvals', 'audit_logs', 'bad_cases', 'brands', 'client_members', 'clients',
+      'content_embeddings', 'content_import_batches', 'content_status_logs', 'contents', 'context_snapshots', 'edit_versions', 'eval_case_results',
+      'eval_cases', 'eval_experiments', 'history_retrieval_items', 'history_retrievals', 'improvement_proposals', 'memories',
+      'model_price_configs', 'monthly_plans', 'organization_ai_quotas', 'organizations', 'performance_import_batches',
+      'performance_snapshots', 'planner_candidates', 'planner_sessions', 'publishes', 'rating_versions', 'ratings', 'run_steps', 'runs', 'script_versions',
       'shoot_contents', 'shoots', 'skill_versions', 'skills', 'stores', 'strategy_reviews', 'users',
     ]);
 
     for (const table of [
-      'accounts', 'ai_point_ledger', 'ai_usage_logs', 'app_settings', 'approvals', 'audit_logs', 'brands', 'client_members', 'clients',
-      'content_embeddings', 'content_import_batches', 'content_status_logs', 'contents', 'context_snapshots', 'edit_versions', 'history_retrieval_items', 'history_retrievals',
-      'memories', 'monthly_plans', 'organization_ai_quotas', 'performance_import_batches', 'performance_snapshots', 'planner_candidates',
-      'planner_sessions', 'publishes', 'run_steps', 'runs', 'script_versions', 'skill_versions', 'strategy_reviews',
+      'accounts', 'ai_point_ledger', 'ai_usage_logs', 'app_settings', 'approvals', 'audit_logs', 'bad_cases', 'brands', 'client_members', 'clients',
+      'content_embeddings', 'content_import_batches', 'content_status_logs', 'contents', 'context_snapshots', 'edit_versions', 'eval_case_results',
+      'eval_cases', 'eval_experiments', 'history_retrieval_items', 'history_retrievals', 'improvement_proposals', 'memories',
+      'monthly_plans', 'organization_ai_quotas', 'performance_import_batches', 'performance_snapshots', 'planner_candidates',
+      'planner_sessions', 'publishes', 'rating_versions', 'ratings', 'run_steps', 'runs', 'script_versions', 'skill_versions', 'strategy_reviews',
       'shoot_contents', 'shoots', 'skills', 'stores', 'users',
     ]) {
       const columns = sqlite.prepare(`pragma table_info(${table})`).all() as Array<{ name: string }>;
@@ -90,6 +92,12 @@ describe('SQLite migration', () => {
     expect(new Set(performanceImportForeignKeys.map(key => key.id)).size).toBe(2);
     const strategyReviewForeignKeys = sqlite.prepare('pragma foreign_key_list(strategy_reviews)').all() as Array<{ id: number }>;
     expect(new Set(strategyReviewForeignKeys.map(key => key.id)).size).toBe(3);
+    const ratingsForeignKeys = sqlite.prepare('pragma foreign_key_list(ratings)').all() as Array<{ id: number }>;
+    expect(new Set(ratingsForeignKeys.map(key => key.id)).size).toBe(3);
+    const proposalForeignKeys = sqlite.prepare('pragma foreign_key_list(improvement_proposals)').all() as Array<{ id: number }>;
+    expect(new Set(proposalForeignKeys.map(key => key.id)).size).toBe(5);
+    const resultForeignKeys = sqlite.prepare('pragma foreign_key_list(eval_case_results)').all() as Array<{ id: number }>;
+    expect(new Set(resultForeignKeys.map(key => key.id)).size).toBe(4);
     const shootForeignKeys = sqlite.prepare('pragma foreign_key_list(shoots)').all() as Array<{ id: number }>;
     expect(new Set(shootForeignKeys.map(key => key.id)).size).toBe(5);
     const shootContentForeignKeys = sqlite.prepare('pragma foreign_key_list(shoot_contents)').all() as Array<{ id: number }>;
@@ -113,6 +121,11 @@ describe('SQLite migration', () => {
     expect(contentColumns.some(column => column.name === 'current_edit_version_id')).toBe(true);
     expect(contentColumns.some(column => column.name === 'published_at')).toBe(true);
     expect(contentColumns.some(column => column.name === 'import_dedup_key')).toBe(true);
+    const immutableTriggers = sqlite.prepare("select name from sqlite_schema where type = 'trigger' and name like 'prevent_%' order by name").all() as Array<{ name: string }>;
+    expect(immutableTriggers.map(row => row.name)).toEqual(expect.arrayContaining([
+      'prevent_eval_case_results_delete', 'prevent_eval_case_results_update',
+      'prevent_rating_versions_delete', 'prevent_rating_versions_update',
+    ]));
   });
 
   it('maps legacy Run statuses and preserves existing Run Steps', () => {

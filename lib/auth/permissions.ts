@@ -16,6 +16,9 @@ export type OrganizationPermission =
   | 'ai.settings'
   | 'runs.read'
   | 'ops.read'
+  | 'eval.read'
+  | 'eval.rate'
+  | 'eval.manage'
   | 'memory.read'
   | 'memory.write'
   | 'context.build'
@@ -30,6 +33,9 @@ const organizationRoleMatrix: Record<OrganizationPermission, readonly User['role
   'ai.settings': ['owner', 'admin'],
   'runs.read': ['owner', 'admin'],
   'ops.read': ['owner', 'admin'],
+  'eval.read': ['owner', 'admin', 'operator'],
+  'eval.rate': ['owner', 'admin', 'operator'],
+  'eval.manage': ['owner', 'admin'],
   'memory.read': ['owner', 'admin', 'operator', 'viewer'],
   'memory.write': ['owner', 'admin', 'operator'],
   'context.build': ['owner', 'admin', 'operator'],

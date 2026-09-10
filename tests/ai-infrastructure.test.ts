@@ -243,26 +243,26 @@ afterEach(() => {
 });
 
 describe('Skill version infrastructure', () => {
-  it('creates immutable snapshots and rolls back by creating another version', () => {
+  it('keeps immutable snapshots and blocks direct production Prompt changes', () => {
     const api = service();
     const v2 = api.updateSkill(ids.skill, {
-      systemPrompt: 'v2 prompt',
-      changeReason: '改进约束',
+      description: '新的元数据说明',
+      changeReason: '更新元数据',
     });
     expect(v2.skill).toMatchObject({
       currentVersion: 2,
-      systemPrompt: 'v2 prompt',
-    });
-    const v3 = api.rollbackSkill(ids.skill, {
-      version: 1,
-      changeReason: '回到稳定快照',
-    });
-    expect(v3.skill).toMatchObject({
-      currentVersion: 3,
       systemPrompt: '只返回 JSON',
+      description: '新的元数据说明',
     });
-    expect(v3.versions.map((version) => version.version)).toEqual([3, 2, 1]);
-    expect(db.select().from(skillVersions).all()).toHaveLength(3);
+    expectApiError(() => api.updateSkill(ids.skill, {
+      systemPrompt: '绕过评测的 Prompt',
+      changeReason: '不允许',
+    }), 409, 'PROMPT_CHANGE_REQUIRES_EVAL');
+    expectApiError(() => api.rollbackSkill(ids.skill, {
+      version: 1, changeReason: '回滚同样需要评测',
+    }), 409, 'PROMPT_CHANGE_REQUIRES_EVAL');
+    expect(v2.versions.map((version) => version.version)).toEqual([2, 1]);
+    expect(db.select().from(skillVersions).all()).toHaveLength(2);
   });
 
   it('enforces centralized permissions and organization isolation', () => {

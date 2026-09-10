@@ -6,7 +6,6 @@ import { useState } from 'react';
 import {
   ArrowLeft,
   FlaskConical,
-  RotateCcw,
   Save,
   Settings2,
 } from 'lucide-react';
@@ -245,8 +244,8 @@ function SkillEditor({
         body: JSON.stringify({
           name: form.get('name'),
           description: form.get('description'),
-          systemPrompt: form.get('systemPrompt'),
-          userPromptTemplate: form.get('userPromptTemplate'),
+          systemPrompt: skill.systemPrompt,
+          userPromptTemplate: skill.userPromptTemplate,
           modelProfile: form.get('modelProfile'),
           pointCost: Number(form.get('pointCost')),
           enabled: form.get('enabled') === 'true',
@@ -272,8 +271,11 @@ function SkillEditor({
       <div>
         <h2 className="text-lg font-semibold">版本化配置</h2>
         <p className="mt-1 text-sm text-slate-500">
-          任何保存都会新建快照，不覆盖历史。
+          元数据和 Schema 保存会新建快照；生产 Prompt 必须经过质量闭环。
         </p>
+        <Button className="mt-3" size="sm" variant="outline" nativeButton={false} render={<Link href="/evals" />}>
+          到评测中心改进 Prompt
+        </Button>
       </div>
       <fieldset disabled={pending} className="grid gap-4 lg:grid-cols-2">
         <label htmlFor="skill-name" className="space-y-1.5 text-sm">
@@ -352,6 +354,7 @@ function SkillEditor({
             className="min-h-36 font-mono"
             name="systemPrompt"
             defaultValue={skill.systemPrompt}
+            readOnly
             required
           />
         </label>
@@ -365,6 +368,7 @@ function SkillEditor({
             className="min-h-28 font-mono"
             name="userPromptTemplate"
             defaultValue={skill.userPromptTemplate}
+            readOnly
             required
           />
         </label>
@@ -404,60 +408,15 @@ function SkillEditor({
 
 function SkillHistory({
   data,
-  reload,
 }: {
   data: SkillDetailData;
-  reload: () => void;
 }) {
-  const [reason, setReason] = useState('');
-  const [pending, setPending] = useState<number | null>(null);
-  const [message, setMessage] = useState('');
-  async function rollback(version: number) {
-    setPending(version);
-    setMessage('');
-    try {
-      await fetchData(
-        `/api/skills/${data.skill.id}/rollback`,
-        skillDetailDataSchema,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ version, changeReason: reason }),
-        },
-      );
-      setReason('');
-      setMessage(`已使用 v${version} 的快照创建新版本`);
-      reload();
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : '回滚失败');
-    } finally {
-      setPending(null);
-    }
-  }
   return (
     <section className="surface-card">
       <h2 className="text-lg font-semibold">版本历史</h2>
       <p className="mt-1 text-sm text-slate-500">
-        回滚会新建版本，历史快照永不删除。
+        历史快照永不删除；使用旧 Prompt 也必须在评测中心完成 A/B 与人工确认。
       </p>
-      {data.permissions.canWrite && (
-        <label
-          htmlFor="skill-rollback-reason"
-          className="mt-4 block space-y-1.5 text-sm"
-        >
-          回滚原因
-          <Input
-            id="skill-rollback-reason"
-            value={reason}
-            onChange={(event) => setReason(event.target.value)}
-            maxLength={1000}
-            placeholder="选择旧版本前先填写原因"
-          />
-        </label>
-      )}
-      {message && (
-        <output className="mt-3 block text-sm text-cyan-800">{message}</output>
-      )}
       <ol className="mt-5 space-y-3">
         {data.versions.map((version) => (
           <li key={version.id} className="rounded-xl border p-4">
@@ -471,20 +430,7 @@ function SkillHistory({
                   {version.pointCost} Points
                 </span>
               </div>
-              {data.permissions.canWrite &&
-                version.version !== data.skill.currentVersion && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={!reason.trim() || pending !== null}
-                    onClick={() => void rollback(version.version)}
-                  >
-                    <RotateCcw />
-                    {pending === version.version
-                      ? '回滚中…'
-                      : '使用此快照新建版本'}
-                  </Button>
-                )}
+              {version.version === data.skill.currentVersion && <Badge className="bg-emerald-50 text-emerald-700">当前生产</Badge>}
             </div>
             <p className="mt-3 text-sm text-slate-700">
               {version.changeReason}
@@ -675,7 +621,7 @@ export function SkillDetailPage({ id }: { id: string }) {
           )}
           {state.data.permissions.canTest && <SkillTest data={state.data} />}
         </div>
-        <SkillHistory data={state.data} reload={state.reload} />
+        <SkillHistory data={state.data} />
       </div>
     </div>
   );

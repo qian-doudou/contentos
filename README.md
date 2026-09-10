@@ -1,6 +1,6 @@
 # ContentOS
 
-ContentOS 是面向本地生活短视频代运营团队的 AI 内容运营与项目管理平台。当前已完成第十五阶段 Ops & Cost：工作台按当前开发身份聚合真实行动项；运营中心以自然月进度计算客户履约风险并展示团队事实；AI 成本按多个维度汇总真实 Usage，Run 详情可追踪安全脱敏后的步骤、Context、模型、成本、Points、错误与实际重试。
+ContentOS 是面向本地生活短视频代运营团队的 AI 内容运营与项目管理平台。当前已完成第十六阶段 Feedback & Eval：Production Run 支持版本化人工评分；规则与人工反馈沉淀为 Bad Case；Prompt 改进只生成隔离 Draft，并且必须经过行级 Diff、冻结输入 A/B、确定性上线门槛和人工确认后才能创建新的组织级生产 Skill 版本。
 
 ## 本地运行
 
@@ -14,7 +14,7 @@ npm run db:seed
 npm run dev
 ```
 
-打开 `http://localhost:3000`。统一 LLM Client 默认通过阿里云百炼的 OpenAI 兼容接口调用千问；未配置 API Key 时自动使用确定性 Mock 响应，核心演示路径无需外部服务。
+打开 `http://localhost:3001`。开发与生产启动脚本均固定使用 3001 端口，避免与同机运行的其他项目冲突。统一 LLM Client 默认通过阿里云百炼的 OpenAI 兼容接口调用千问；未配置 API Key 时自动使用确定性 Mock 响应，核心演示路径无需外部服务。
 
 ## 百炼千问配置
 
@@ -66,7 +66,9 @@ Embedding 使用 `EMBEDDING_BASE_URL` / `EMBEDDING_API_KEY` / `EMBEDDING_MODEL`�
 - `/edits/[id]`：剪辑分配、开始处理、成片版本提交、Diff 式元数据列表和内外部审核记录。内容详情页同步提供该面板。
 - `/analytics/content`：按账号、时间、内容类型、Hook 类型和内容目标筛选表现快照，提供字段映射、逐行错误报告和确认写入式 CSV 导入。
 - `/ai/reviews`：先预览代码聚合的数据事实，再生成 AI 解释与策略；展示样本门槛、人工确认、Memory 写入和下月计划草案入口。
-- `/skills`、`/skills/[id]`：Skill 列表、Prompt/Schema 编辑、不可变版本历史、新版本式回滚和 Test Run。
+- `/skills`、`/skills/[id]`：Skill 列表、只读生产 Prompt、Schema/元数据版本配置、不可变版本历史和 Test Run；Prompt 变更统一转入评测中心。
+- `/evals`：确定性质量指标、Production Run 评分、Bad Case、改进草案和 Eval Case 管理。
+- `/evals/proposals/[id]`：旧/新 Prompt 行级 Diff、固定输入 A/B 指标、改善/退化 Case、上线门槛与人工确认。
 - `/settings/ai`：安全的百炼模式/模型概览、当前额度和可追加的模型价格配置。
 - `/ops`：按月份查看计划目标、真实发布、剩余缺口、自然月进度、风险原因、团队事实和额度预警，并直接进入计划处理。
 - `/ops/ai-cost`：按日期汇总 AI 调用、Tokens、Points 和 estimated cost，支持 Skill、模型、客户、账号、用户维度；缺少价格时明确显示“未知”。
@@ -79,7 +81,7 @@ Embedding 使用 `EMBEDDING_BASE_URL` / `EMBEDDING_API_KEY` / `EMBEDDING_MODEL`�
 - 默认数据库：`./data/contentos.db`，可通过 `DATABASE_PATH` 修改。
 - Schema：`db/schema.ts`。
 - Migration：`drizzle/`。
-- Seed：`npm run db:seed`，幂等写入带 `is_demo` 标识的组织、5 位可切换成员、客户授权关系、德祥楼业务层级、2026 年 9 月计划、结构化内容、3 条历史内容、6 条已确认档案 Memory、8 个系统 Skill 及版本快照、2026 演示 AI 额度、运营风险阈值配置，以及待拍摄和已拍摄的真实工作流演示数据。不预置虚构经营指标、Performance Snapshot 或模型价格。
+- Seed：`npm run db:seed`，幂等写入带 `is_demo` 标识的组织、5 位可切换成员、客户授权关系、德祥楼业务层级、2026 年 9 月计划、结构化内容、3 条历史内容、6 条已确认档案 Memory、9 个系统 Skill 及版本快照（含只用于 Eval 的 `prompt_improver`）、2026 演示 AI 额度、运营风险阈值配置，以及待拍摄和已拍摄的真实工作流演示数据。不预置虚构经营指标、Performance Snapshot、评分、Bad Case 或模型价格。
 - 恢复演示数据：`npm run db:reset`，或在开发环境调用 `POST /api/dev/reset` 并传入 `{ "confirm": "RESET_DEMO" }`。该操作只恢复固定 demo ID，不物理删除业务记录，也不绕过状态机重置已有内容的工作流状态。
 
 所有时间以 ISO 8601 文本保存，所有业务 ID 使用 UUID。核心层级通过包含 `organization_id` 的复合外键约束，服务层所有 ID 查询同时带组织条件。数据库文件被 Git 忽略，进程重启和页面刷新不会清空数据。
@@ -122,6 +124,20 @@ AI 基础设施接口：
 - `POST /api/settings/ai/prices`
 - `GET /api/ops/runs`
 - `GET /api/ops/runs/[id]`
+
+AI 质量闭环接口：
+
+- `GET /api/evals`（质量指标、评分、Bad Case、草案和 Eval Case 总览）
+- `POST /api/evals/scan`（Owner / Admin 运行确定性 Bad Case 规则扫描）
+- `POST /api/evals/ratings`
+- `PUT /api/evals/ratings/[id]`（新增评分历史版本，不覆盖旧版本）
+- `GET /api/evals/bad-cases`
+- `PUT /api/evals/bad-cases/[id]`
+- `POST /api/evals/proposals`（只保存 Draft）
+- `GET /api/evals/proposals/[id]`
+- `POST /api/evals/proposals/[id]/run`（A/B 均为 `run_type=eval`）
+- `POST /api/evals/proposals/[id]/apply`（仅通过门槛后由人工确认）
+- `POST /api/evals/cases`
 
 Memory 与 Context 接口：
 
@@ -225,6 +241,12 @@ AI 额度按 70% / 90% / 100% 分级预警。收费 Production Run 在额度不�
 
 Run 列表与详情均在服务端移除 API Key、Authorization、Token、Base URL、数据库路径和服务器绝对路径。详情只读取同一 organization 的 Run 与 Context Snapshot，跨组织 ID 返回 404。
 
+评分当前值保存在 `ratings`，每次修改都向不可变 `rating_versions` 追加完整快照。综合评分不高于 2、品牌事实/过期信息标签、失效 Memory 引用、高重复仍默认可选、连续两次 Schema 失败或人工标记会生成幂等 Bad Case。Bad Case Snapshot 会经过与 Run 详情相同的敏感字段脱敏。
+
+Prompt 改进由 `prompt_improver` 通过统一 LLM Client 以 Eval Run 生成，但结果只保存为 `improvement_proposals.status=draft`，不会写入 `skills`。A/B 对每个 Eval Case 使用完全相同的 Input、Context Snapshot、Output Schema 和模型档位；结果分别保存 Eval Run 与不可变 Case Result，且不扣正式 Points。少于 3 个 Case 明确显示“数据不足”。严重品牌事实错误或失效 Memory 使用不为 0、Schema 通过率下降、高重复违规增加、关键规则总体退化或任一 Case 退化都会阻止应用。
+
+只有 Owner / Admin 在门槛通过后显式确认，服务端才创建新 Skill 版本。系统内置 Skill 不会被组织直接改写：首次应用会复制完整历史形成组织级版本链，其他组织继续使用全局基线。直接修改或回滚生产 Prompt 均返回 `PROMPT_CHANGE_REQUIRES_EVAL`。
+
 `strategy_reviews` 的 AI 分析与数据事实分字段保存。Draft 或 Rejected 不会写 Memory；Confirmed 才创建 `confirmed_strategy` 来源的 strategy Memory。只有有效快照内容数达到管理员阈值，并且确认时显式勾选，才额外创建 `confirmed_performance` 来源的 performance_pattern Memory。下月计划以 `inactive` 状态创建为草案，沿用月度计划唯一约束，已存在时返回 409 且不覆盖。
 
 动态价格事实只允许来自 Context 的 L1–L3 已确认信息，不从历史内容摘要继承。模型生成 Context 中不存在的具体价格时，服务端会在展示前移除，并记录 `unverified_dynamic_fact` 质量提示；过期或 superseded 的旧价格不会进入 Context 或候选正文。
@@ -261,7 +283,7 @@ Skill 的 Input/Output Schema 在写入和执行时都经 Zod 校验。Productio
 - Content：《老板带你认识鲁西南铜锅涮》待办内容，另有 3 条用于 Top10 召回的演示历史内容；均不含脚本正文或虚构经营指标
 - Shoot：2026-09-10 德祥楼待拍演示排期；另有 1 场已完成拍摄及状态日志
 - Edit：《老板带你看传统铜锅怎么开锅》已处于 `SHOT`，分配给剪辑 A，可直接演示开始剪辑与成片审核闭环
-- AI：8 个系统内置 Skill；Planner、脚本、去重、质量、表现分析和策略规划均保留 v1 并使用阶段化 v2 协议；演示组织当期 1000 Points，初始已用 0
+- AI：9 个系统内置 Skill；Planner、脚本、去重、质量、表现分析和策略规划均保留 v1 并使用阶段化 v2 协议，另含不计正式 Points 的 Prompt 改进 Skill；演示组织当期 1000 Points，初始已用 0
 - Memory：从德祥楼 Brand/Account 已确认字段初始化 6 条，`source_type=brand_profile`、`confidence=1`
 
 ## 质量检查
@@ -276,5 +298,7 @@ npm run build
 ## 当前边界
 
 当前未接入真实 OAuth、抖音 API、大型素材文件上传、自动发布、自动同步 GMV、支付、视频生成、自动剪辑、数字人或企业生产数据。发布与表现数据只支持人工录入和 CSV 导入；Seed 不预置虚构经营指标，因此首次策略复盘前需要先录入有效 Snapshot。外部审核 Token 适用于本地 MVP 演示，尚未接入短信、邮件或企业客户身份体系；原始 Token 只在提交或重发审核响应中返回一次。真实百炼调用需配置有效 Key 并为实际模型名添加价格配置；没有价格时成本显示“未知”。
+
+本阶段没有实现 LLM-as-Judge；所有上线结论只使用可复现的 Schema、规则、人工标注和成本/耗时指标。质量中心只扫描最近 100 个 Production Run，历史更早 Run 需要后续批处理能力。
 
 拍摄阶段只记录结构化 Checklist 与缺镜说明，不存储视频或图片文件。Performance Snapshot 不支持更新或覆盖；录错数据时当前阶段需追加新的时间点保留历史，尚未实现冲正标记流程。

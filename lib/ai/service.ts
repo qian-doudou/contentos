@@ -211,13 +211,14 @@ export function aiInfrastructureService(
     skillCode: string,
     subjectId: string | null,
     inputJson: string,
+    subjectType = `skill:${skillCode}`,
   ) => {
     const createdAt = timestamp();
     const run = runSchema.parse({
       id: crypto.randomUUID(),
       organizationId,
       runType,
-      subjectType: `skill:${skillCode}`,
+      subjectType,
       subjectId,
       status: 'queued',
       startedAt: null,
@@ -426,8 +427,11 @@ export function aiInfrastructureService(
     persistBusinessResult?: (output: unknown) => void;
     mockOutput?: unknown;
     validateOutput?: (output: unknown) => void;
+    skillOverride?: z.infer<typeof skillSchema>;
+    subjectType?: string;
+    traceMetadata?: Record<string, unknown>;
   }) {
-    const skill = getSkillByCode(args.skillCode);
+    const skill = args.skillOverride ?? getSkillByCode(args.skillCode);
     if (!skill.enabled)
       throw new ApiError(409, 'SKILL_DISABLED', 'Skill 已停用');
     const scope = validateScope(args.clientId ?? null, args.accountId ?? null);
@@ -469,12 +473,14 @@ export function aiInfrastructureService(
       skillVersion: skill.currentVersion,
       input: inputResult.data,
       renderedPrompt,
+      ...(args.traceMetadata ? { metadata: args.traceMetadata } : {}),
     });
     const tracking = createRun(
       args.runType,
       skill.code,
       args.subjectId ?? null,
       traceInput,
+      args.subjectType,
     );
     const invokeStarted = now().getTime();
     let completion: LlmCompletion | null = null;
@@ -699,7 +705,7 @@ export function aiInfrastructureService(
   return {
     listSkills() {
       permissions.require('skills.read');
-      const items = db
+      const scoped = db
         .select()
         .from(tables.skills)
         .where(
@@ -708,9 +714,11 @@ export function aiInfrastructureService(
             eq(tables.skills.organizationId, organizationId),
           ),
         )
-        .orderBy(asc(tables.skills.code))
-        .all()
-        .map((row) => skillSchema.parse(row));
+        .orderBy(asc(tables.skills.code), desc(sql`${tables.skills.organizationId} IS NOT NULL`))
+        .all();
+      const byCode = new Map<string, z.infer<typeof skillSchema>>();
+      for (const row of scoped) if (!byCode.has(row.code)) byCode.set(row.code, skillSchema.parse(row));
+      const items = [...byCode.values()];
       return skillListDataSchema.parse({
         items,
         total: items.length,
@@ -744,6 +752,9 @@ export function aiInfrastructureService(
       const value = updateSkillInputSchema.parse(input);
       return db.transaction(() => {
         const current = getSkill(id);
+        if ((value.systemPrompt !== undefined && value.systemPrompt !== current.systemPrompt)
+          || (value.userPromptTemplate !== undefined && value.userPromptTemplate !== current.userPromptTemplate))
+          throw new ApiError(409, 'PROMPT_CHANGE_REQUIRES_EVAL', '生产 Prompt 只能通过 Bad Case、Diff、Eval/A-B 与人工确认流程变更');
         const { changeReason, ...changes } = value;
         const next = persistSkillVersion(current, changes, changeReason);
         return skillDetailDataSchema.parse({
@@ -760,44 +771,13 @@ export function aiInfrastructureService(
     },
     rollbackSkill(id: string, input: unknown) {
       permissions.require('skills.write');
-      const value = rollbackSkillInputSchema.parse(input);
-      return db.transaction(() => {
-        const current = getSkill(id);
-        const targetRow = db
-          .select()
-          .from(tables.skillVersions)
-          .where(
-            and(
-              eq(tables.skillVersions.skillId, current.id),
-              eq(tables.skillVersions.version, value.version),
-            ),
-          )
-          .get();
-        if (!targetRow) throw missing();
-        const target = skillVersionSchema.parse(targetRow);
-        const next = persistSkillVersion(
-          current,
-          {
-            systemPrompt: target.systemPrompt,
-            userPromptTemplate: target.userPromptTemplate,
-            inputSchemaJson: target.inputSchemaJson,
-            outputSchemaJson: target.outputSchemaJson,
-            modelProfile: target.modelProfile,
-            pointCost: target.pointCost,
-          },
-          value.changeReason,
-        );
-        return skillDetailDataSchema.parse({
-          skill: next,
-          versions: db
-            .select()
-            .from(tables.skillVersions)
-            .where(eq(tables.skillVersions.skillId, current.id))
-            .orderBy(desc(tables.skillVersions.version))
-            .all(),
-          permissions: { canWrite: true, canTest: permissions.has('ai.test') },
-        });
-      });
+      rollbackSkillInputSchema.parse(input);
+      getSkill(id);
+      throw new ApiError(
+        409,
+        'PROMPT_CHANGE_REQUIRES_EVAL',
+        '历史 Prompt 回滚也必须先生成改进草案，并通过 Diff、Eval/A-B 与人工确认',
+      );
     },
     async testSkill(id: string, input: unknown) {
       permissions.require('ai.test');
@@ -855,12 +835,55 @@ export function aiInfrastructureService(
       skillCode: string;
       data: Record<string, unknown>;
       subjectId?: string | null;
+      mockOutput?: unknown;
     }) {
       return execute({
         runType: 'eval',
         skillCode: input.skillCode,
         input: input.data,
         subjectId: input.subjectId,
+        mockOutput: input.mockOutput,
+      });
+    },
+    executeEvalVariant(input: {
+      skillId: string;
+      version: number;
+      systemPrompt: string;
+      userPromptTemplate: string;
+      inputSchemaJson: Record<string, unknown>;
+      outputSchemaJson: Record<string, unknown>;
+      modelProfile: 'light' | 'standard' | 'strong';
+      pointCost: number;
+      data: Record<string, unknown>;
+      subjectId: string;
+      variant: 'a' | 'b';
+      contextSnapshot: unknown;
+      mockOutput?: unknown;
+    }) {
+      const current = getSkill(input.skillId);
+      const frozenSkill = skillSchema.parse({
+        ...current,
+        systemPrompt: input.systemPrompt,
+        userPromptTemplate: input.userPromptTemplate,
+        inputSchemaJson: input.inputSchemaJson,
+        outputSchemaJson: input.outputSchemaJson,
+        modelProfile: input.modelProfile,
+        pointCost: input.pointCost,
+        currentVersion: input.version,
+      });
+      return execute({
+        runType: 'eval',
+        skillCode: current.code,
+        input: input.data,
+        subjectId: input.subjectId,
+        mockOutput: input.mockOutput,
+        skillOverride: frozenSkill,
+        subjectType: `eval_ab:${input.variant}`,
+        traceMetadata: {
+          variant: input.variant.toUpperCase(),
+          frozenSkillVersion: input.version,
+          contextSnapshot: input.contextSnapshot,
+        },
       });
     },
     settings() {

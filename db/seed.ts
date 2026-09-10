@@ -22,6 +22,7 @@ import {
   strategyPlannerOutputJsonSchema,
 } from '../lib/strategy-review/contracts';
 import { DEFAULT_OPS_CONFIG } from '../lib/ops/config';
+import { promptImproverInputJsonSchema, promptImproverOutputJsonSchema } from '../lib/evals/contracts';
 
 export const DEMO_IDS = {
   organization: '0198f744-8e18-7ae2-a780-52a0e20c1931',
@@ -70,6 +71,8 @@ const qualityCheckerV2VersionId = '0198f744-8e18-7ae2-a780-52a0e20c1b18';
 const scriptGeneratorV2VersionId = '0198f744-8e18-7ae2-a780-52a0e20c1b12';
 const performanceAnalyzerV2VersionId = '0198f744-8e18-7ae2-a780-52a0e20c1b16';
 const strategyPlannerV2VersionId = '0198f744-8e18-7ae2-a780-52a0e20c1b17';
+const promptImproverSkillId = '0198f744-8e18-7ae2-a780-52a0e20c1a09';
+const promptImproverVersionId = '0198f744-8e18-7ae2-a780-52a0e20c1b09';
 const externalDedupKey = (value: string) =>
   `external_id:${createHash('sha256').update(value.trim().toLocaleLowerCase()).digest('hex')}`;
 
@@ -264,6 +267,42 @@ export function seedDemoData(options: { reset?: boolean } = {}) {
         .run();
     }
 
+    const promptImprover = {
+      id: promptImproverSkillId,
+      organizationId: null,
+      code: 'prompt_improver',
+      name: 'Prompt 改进提案器',
+      description: '只生成待评测的 Prompt 草案，不得修改生产 Skill。',
+      systemPrompt: '你是 ContentOS Prompt 改进提案器。根据 Bad Case、失败输入、Context、错误输出和人工期望生成最小化修改草案。不得放宽品牌事实、Memory 有效性、Schema 或重复度规则。只返回符合 Output Schema 的 JSON；草案绝不能直接应用生产。',
+      userPromptTemplate: '分析以下当前 Skill 与 Bad Case，生成可进行 Diff 和 A/B Eval 的 Prompt 草案：\n{{input_json}}',
+      inputSchemaJson: promptImproverInputJsonSchema,
+      outputSchemaJson: promptImproverOutputJsonSchema,
+      modelProfile: 'strong' as const,
+      pointCost: 0,
+      enabled: true,
+      currentVersion: 1,
+      isDemo: false,
+      createdAt: now,
+      updatedAt: now,
+    };
+    db.insert(skills).values(promptImprover).onConflictDoNothing().run();
+    db.insert(skillVersions).values({
+      id: promptImproverVersionId,
+      organizationId: null,
+      skillId: promptImproverSkillId,
+      version: 1,
+      systemPrompt: promptImprover.systemPrompt,
+      userPromptTemplate: promptImprover.userPromptTemplate,
+      inputSchemaJson: promptImprover.inputSchemaJson,
+      outputSchemaJson: promptImprover.outputSchemaJson,
+      modelProfile: promptImprover.modelProfile,
+      pointCost: promptImprover.pointCost,
+      changeReason: '阶段十六质量闭环初始版本',
+      createdBy: null,
+      isDemo: false,
+      createdAt: now,
+    }).onConflictDoNothing().run();
+
     const duplicateJudge = db.select().from(skills).where(and(
       eq(skills.code, 'duplicate_judge'), isNull(skills.organizationId),
     )).get();
@@ -422,7 +461,7 @@ export function seedDemoData(options: { reset?: boolean } = {}) {
         id: DEMO_IDS.phaseSetting,
         organizationId: DEMO_IDS.organization,
         key: 'product.phase',
-        valueJson: JSON.stringify({ phase: 15, label: 'Ops & Cost' }),
+        valueJson: JSON.stringify({ phase: 16, label: 'Feedback & Eval' }),
         isSecret: false,
         isDemo: true,
         createdAt: now,
@@ -430,7 +469,7 @@ export function seedDemoData(options: { reset?: boolean } = {}) {
       })
       .onConflictDoUpdate({
         target: [appSettings.organizationId, appSettings.key],
-        set: { valueJson: JSON.stringify({ phase: 15, label: 'Ops & Cost' }), updatedAt: now },
+        set: { valueJson: JSON.stringify({ phase: 16, label: 'Feedback & Eval' }), updatedAt: now },
       })
       .run();
 

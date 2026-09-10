@@ -9,6 +9,9 @@ import {
   approvalReviewerTypes, approvalStatuses, approvalTypes, editAssetTypes, scriptSourceTypes,
   performanceImportStatuses, publishPlatforms, publishStatuses, strategyReviewStatuses,
   shootItemStatuses, shootStatuses,
+  badCaseCategories, badCaseSeverities, badCaseStatuses, evalCaseSourceTypes,
+  evalCaseStatuses, evalExperimentStatuses, evalVariants, evalVerdicts,
+  improvementProposalStatuses, ratingIssueTags,
 } from './constants';
 import {
   organizationStatuses,
@@ -1210,3 +1213,225 @@ export type ModelPriceConfigRow = typeof modelPriceConfigs.$inferSelect;
 export type OrganizationAiQuotaRow = typeof organizationAiQuotas.$inferSelect;
 export type AiPointLedgerRow = typeof aiPointLedger.$inferSelect;
 export type AiUsageLogRow = typeof aiUsageLogs.$inferSelect;
+
+export const ratings = sqliteTable('ratings', {
+  id: text('id').primaryKey(),
+  organizationId: text('organization_id').notNull().references(() => organizations.id),
+  runId: text('run_id').notNull(),
+  overallScore: integer('overall_score').notNull(),
+  brandConsistency: integer('brand_consistency').notNull(),
+  usability: integer('usability').notNull(),
+  novelty: integer('novelty').notNull(),
+  comment: text('comment').notNull().default(''),
+  issueTagsJson: text('issue_tags_json', { mode: 'json' }).$type<(typeof ratingIssueTags)[number][]>().notNull().default([]),
+  markedBadCase: integer('marked_bad_case', { mode: 'boolean' }).notNull().default(false),
+  ratedBy: text('rated_by').notNull(),
+  ratedAt: text('rated_at').notNull(),
+  currentVersion: integer('current_version').notNull().default(1),
+  isDemo: integer('is_demo', { mode: 'boolean' }).notNull().default(false),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+}, (t) => [
+  uniqueIndex('uq_ratings_org_run_rater').on(t.organizationId, t.runId, t.ratedBy),
+  uniqueIndex('uq_ratings_org_id').on(t.organizationId, t.id),
+  index('idx_ratings_org_run').on(t.organizationId, t.runId, t.ratedAt),
+  foreignKey({ columns: [t.organizationId, t.runId], foreignColumns: [runs.organizationId, runs.id] }),
+  foreignKey({ columns: [t.organizationId, t.ratedBy], foreignColumns: [users.organizationId, users.id] }),
+  check('ratings_scores_valid', sql`
+    ${t.overallScore} BETWEEN 1 AND 5 AND ${t.brandConsistency} BETWEEN 1 AND 5 AND
+    ${t.usability} BETWEEN 1 AND 5 AND ${t.novelty} BETWEEN 1 AND 5
+  `),
+  check('ratings_version_valid', sql`${t.currentVersion} >= 1 AND typeof(${t.currentVersion}) = 'integer'`),
+  check('ratings_issue_tags_array', sql`json_type(${t.issueTagsJson}) = 'array'`),
+]);
+
+export const ratingVersions = sqliteTable('rating_versions', {
+  id: text('id').primaryKey(),
+  organizationId: text('organization_id').notNull().references(() => organizations.id),
+  ratingId: text('rating_id').notNull(),
+  versionNo: integer('version_no').notNull(),
+  overallScore: integer('overall_score').notNull(),
+  brandConsistency: integer('brand_consistency').notNull(),
+  usability: integer('usability').notNull(),
+  novelty: integer('novelty').notNull(),
+  comment: text('comment').notNull().default(''),
+  issueTagsJson: text('issue_tags_json', { mode: 'json' }).$type<(typeof ratingIssueTags)[number][]>().notNull().default([]),
+  markedBadCase: integer('marked_bad_case', { mode: 'boolean' }).notNull().default(false),
+  ratedBy: text('rated_by').notNull(),
+  ratedAt: text('rated_at').notNull(),
+  createdAt: text('created_at').notNull(),
+}, (t) => [
+  uniqueIndex('uq_rating_versions_org_id').on(t.organizationId, t.id),
+  uniqueIndex('uq_rating_versions_rating_version').on(t.organizationId, t.ratingId, t.versionNo),
+  index('idx_rating_versions_org_rating').on(t.organizationId, t.ratingId, t.versionNo),
+  foreignKey({ columns: [t.organizationId, t.ratingId], foreignColumns: [ratings.organizationId, ratings.id] }),
+  foreignKey({ columns: [t.organizationId, t.ratedBy], foreignColumns: [users.organizationId, users.id] }),
+  check('rating_versions_scores_valid', sql`
+    ${t.overallScore} BETWEEN 1 AND 5 AND ${t.brandConsistency} BETWEEN 1 AND 5 AND
+    ${t.usability} BETWEEN 1 AND 5 AND ${t.novelty} BETWEEN 1 AND 5
+  `),
+  check('rating_versions_version_valid', sql`${t.versionNo} >= 1 AND typeof(${t.versionNo}) = 'integer'`),
+  check('rating_versions_issue_tags_array', sql`json_type(${t.issueTagsJson}) = 'array'`),
+]);
+
+export const badCases = sqliteTable('bad_cases', {
+  id: text('id').primaryKey(),
+  organizationId: text('organization_id').notNull().references(() => organizations.id),
+  category: text('category', { enum: badCaseCategories }).notNull(),
+  severity: text('severity', { enum: badCaseSeverities }).notNull(),
+  runId: text('run_id').notNull(),
+  stepCode: text('step_code').notNull(),
+  skillCode: text('skill_code').notNull(),
+  skillVersion: integer('skill_version').notNull(),
+  inputSnapshotJson: text('input_snapshot_json', { mode: 'json' }).$type<unknown>().notNull(),
+  contextSnapshotJson: text('context_snapshot_json', { mode: 'json' }).$type<unknown>().notNull(),
+  outputJson: text('output_json', { mode: 'json' }).$type<unknown>().notNull(),
+  expectedBehavior: text('expected_behavior').notNull().default(''),
+  status: text('status', { enum: badCaseStatuses }).notNull().default('open'),
+  ruleGenerated: integer('rule_generated', { mode: 'boolean' }).notNull(),
+  sourceRatingId: text('source_rating_id'),
+  fingerprint: text('fingerprint').notNull(),
+  createdBy: text('created_by').notNull(),
+  isDemo: integer('is_demo', { mode: 'boolean' }).notNull().default(false),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+}, (t) => [
+  uniqueIndex('uq_bad_cases_org_id').on(t.organizationId, t.id),
+  uniqueIndex('uq_bad_cases_org_fingerprint').on(t.organizationId, t.fingerprint),
+  index('idx_bad_cases_org_status_created').on(t.organizationId, t.status, t.createdAt),
+  index('idx_bad_cases_org_skill_version').on(t.organizationId, t.skillCode, t.skillVersion),
+  foreignKey({ columns: [t.organizationId, t.runId], foreignColumns: [runs.organizationId, runs.id] }),
+  foreignKey({ columns: [t.organizationId, t.sourceRatingId], foreignColumns: [ratings.organizationId, ratings.id] }),
+  foreignKey({ columns: [t.organizationId, t.createdBy], foreignColumns: [users.organizationId, users.id] }),
+  check('bad_cases_category_valid', sql`${t.category} IN (
+    'brand_fact_error', 'expired_information', 'duplicate_content', 'wrong_style',
+    'unusable_script', 'wrong_content_goal', 'poor_strategy', 'invalid_json',
+    'context_missing', 'other', 'low_rating', 'memory_status_violation',
+    'high_duplicate_default', 'schema_repeated_failure', 'manual_flag'
+  )`),
+  check('bad_cases_severity_valid', sql`${t.severity} IN ('low', 'medium', 'high', 'critical')`),
+  check('bad_cases_status_valid', sql`${t.status} IN ('open', 'investigating', 'resolved', 'dismissed')`),
+  check('bad_cases_skill_version_valid', sql`${t.skillVersion} >= 1 AND typeof(${t.skillVersion}) = 'integer'`),
+]);
+
+export const improvementProposals = sqliteTable('improvement_proposals', {
+  id: text('id').primaryKey(),
+  organizationId: text('organization_id').notNull().references(() => organizations.id),
+  skillId: text('skill_id').notNull(),
+  baseSkillVersion: integer('base_skill_version').notNull(),
+  proposalRunId: text('proposal_run_id').notNull(),
+  rootCause: text('root_cause').notNull(),
+  changeReason: text('change_reason').notNull(),
+  newSystemPrompt: text('new_system_prompt').notNull(),
+  newUserPromptTemplate: text('new_user_prompt_template').notNull(),
+  risksJson: text('risks_json', { mode: 'json' }).$type<string[]>().notNull().default([]),
+  affectedCasesJson: text('affected_cases_json', { mode: 'json' }).$type<string[]>().notNull().default([]),
+  status: text('status', { enum: improvementProposalStatuses }).notNull().default('draft'),
+  appliedSkillVersion: integer('applied_skill_version'),
+  appliedBy: text('applied_by'),
+  appliedAt: text('applied_at'),
+  createdBy: text('created_by').notNull(),
+  isDemo: integer('is_demo', { mode: 'boolean' }).notNull().default(false),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+}, (t) => [
+  uniqueIndex('uq_improvement_proposals_org_id').on(t.organizationId, t.id),
+  index('idx_improvement_proposals_org_status_created').on(t.organizationId, t.status, t.createdAt),
+  foreignKey({ columns: [t.organizationId, t.proposalRunId], foreignColumns: [runs.organizationId, runs.id] }),
+  foreignKey({ columns: [t.skillId], foreignColumns: [skills.id] }),
+  foreignKey({ columns: [t.organizationId, t.appliedBy], foreignColumns: [users.organizationId, users.id] }),
+  foreignKey({ columns: [t.organizationId, t.createdBy], foreignColumns: [users.organizationId, users.id] }),
+  check('improvement_proposals_status_valid', sql`${t.status} IN ('draft', 'evaluated', 'applied', 'rejected')`),
+  check('improvement_proposals_version_valid', sql`${t.baseSkillVersion} >= 1 AND (${t.appliedSkillVersion} IS NULL OR ${t.appliedSkillVersion} > ${t.baseSkillVersion})`),
+  check('improvement_proposals_cases_array', sql`json_type(${t.affectedCasesJson}) = 'array' AND json_type(${t.risksJson}) = 'array'`),
+]);
+
+export const evalCases = sqliteTable('eval_cases', {
+  id: text('id').primaryKey(),
+  organizationId: text('organization_id').notNull().references(() => organizations.id),
+  sourceType: text('source_type', { enum: evalCaseSourceTypes }).notNull(),
+  sourceId: text('source_id'),
+  name: text('name').notNull(),
+  skillCode: text('skill_code').notNull(),
+  skillVersion: integer('skill_version').notNull(),
+  inputSnapshotJson: text('input_snapshot_json', { mode: 'json' }).$type<Record<string, unknown>>().notNull(),
+  contextSnapshotJson: text('context_snapshot_json', { mode: 'json' }).$type<unknown>().notNull(),
+  expectedBehavior: text('expected_behavior').notNull(),
+  expectedDuplicateLevel: text('expected_duplicate_level', { enum: ['new', 'mild', 'remixable', 'high'] }),
+  assertionsJson: text('assertions_json', { mode: 'json' }).$type<Record<string, unknown>>().notNull().default({}),
+  status: text('status', { enum: evalCaseStatuses }).notNull().default('active'),
+  createdBy: text('created_by').notNull(),
+  isDemo: integer('is_demo', { mode: 'boolean' }).notNull().default(false),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+}, (t) => [
+  uniqueIndex('uq_eval_cases_org_id').on(t.organizationId, t.id),
+  uniqueIndex('uq_eval_cases_org_source').on(t.organizationId, t.sourceType, t.sourceId).where(sql`${t.sourceId} IS NOT NULL`),
+  index('idx_eval_cases_org_skill_status').on(t.organizationId, t.skillCode, t.status, t.createdAt),
+  foreignKey({ columns: [t.organizationId, t.createdBy], foreignColumns: [users.organizationId, users.id] }),
+  check('eval_cases_source_valid', sql`${t.sourceType} IN ('bad_case', 'high_rating_production', 'manual')`),
+  check('eval_cases_status_valid', sql`${t.status} IN ('active', 'inactive')`),
+  check('eval_cases_version_valid', sql`${t.skillVersion} >= 1 AND typeof(${t.skillVersion}) = 'integer'`),
+  check('eval_cases_duplicate_level_valid', sql`${t.expectedDuplicateLevel} IS NULL OR ${t.expectedDuplicateLevel} IN ('new', 'mild', 'remixable', 'high')`),
+]);
+
+export const evalExperiments = sqliteTable('eval_experiments', {
+  id: text('id').primaryKey(),
+  organizationId: text('organization_id').notNull().references(() => organizations.id),
+  proposalId: text('proposal_id').notNull(),
+  baselineSkillVersion: integer('baseline_skill_version').notNull(),
+  modelProfile: text('model_profile', { enum: modelProfiles }).notNull(),
+  caseIdsJson: text('case_ids_json', { mode: 'json' }).$type<string[]>().notNull(),
+  runIdsAJson: text('run_ids_a_json', { mode: 'json' }).$type<string[]>().notNull().default([]),
+  runIdsBJson: text('run_ids_b_json', { mode: 'json' }).$type<string[]>().notNull().default([]),
+  status: text('status', { enum: evalExperimentStatuses }).notNull().default('running'),
+  verdict: text('verdict', { enum: evalVerdicts }).notNull().default('data_insufficient'),
+  metricsAJson: text('metrics_a_json', { mode: 'json' }).$type<Record<string, unknown>>().notNull().default({}),
+  metricsBJson: text('metrics_b_json', { mode: 'json' }).$type<Record<string, unknown>>().notNull().default({}),
+  comparisonJson: text('comparison_json', { mode: 'json' }).$type<Record<string, unknown>>().notNull().default({}),
+  createdBy: text('created_by').notNull(),
+  isDemo: integer('is_demo', { mode: 'boolean' }).notNull().default(false),
+  createdAt: text('created_at').notNull(),
+  completedAt: text('completed_at'),
+}, (t) => [
+  uniqueIndex('uq_eval_experiments_org_id').on(t.organizationId, t.id),
+  index('idx_eval_experiments_org_proposal_created').on(t.organizationId, t.proposalId, t.createdAt),
+  foreignKey({ columns: [t.organizationId, t.proposalId], foreignColumns: [improvementProposals.organizationId, improvementProposals.id] }),
+  foreignKey({ columns: [t.organizationId, t.createdBy], foreignColumns: [users.organizationId, users.id] }),
+  check('eval_experiments_status_valid', sql`${t.status} IN ('running', 'completed', 'failed')`),
+  check('eval_experiments_verdict_valid', sql`${t.verdict} IN ('data_insufficient', 'passed', 'regressed')`),
+  check('eval_experiments_arrays_valid', sql`json_type(${t.caseIdsJson}) = 'array' AND json_type(${t.runIdsAJson}) = 'array' AND json_type(${t.runIdsBJson}) = 'array'`),
+]);
+
+export const evalCaseResults = sqliteTable('eval_case_results', {
+  id: text('id').primaryKey(),
+  organizationId: text('organization_id').notNull().references(() => organizations.id),
+  experimentId: text('experiment_id').notNull(),
+  evalCaseId: text('eval_case_id').notNull(),
+  variant: text('variant', { enum: evalVariants }).notNull(),
+  runId: text('run_id').notNull(),
+  outputJson: text('output_json', { mode: 'json' }).$type<unknown>().notNull(),
+  metricsJson: text('metrics_json', { mode: 'json' }).$type<Record<string, unknown>>().notNull(),
+  schemaValid: integer('schema_valid', { mode: 'boolean' }).notNull(),
+  durationMs: integer('duration_ms').notNull(),
+  estimatedCost: real('estimated_cost'),
+  model: text('model').notNull(),
+  createdAt: text('created_at').notNull(),
+}, (t) => [
+  uniqueIndex('uq_eval_case_results_org_id').on(t.organizationId, t.id),
+  uniqueIndex('uq_eval_case_results_experiment_case_variant').on(t.organizationId, t.experimentId, t.evalCaseId, t.variant),
+  index('idx_eval_case_results_org_experiment').on(t.organizationId, t.experimentId, t.variant),
+  foreignKey({ columns: [t.organizationId, t.experimentId], foreignColumns: [evalExperiments.organizationId, evalExperiments.id] }),
+  foreignKey({ columns: [t.organizationId, t.evalCaseId], foreignColumns: [evalCases.organizationId, evalCases.id] }),
+  foreignKey({ columns: [t.organizationId, t.runId], foreignColumns: [runs.organizationId, runs.id] }),
+  check('eval_case_results_variant_valid', sql`${t.variant} IN ('a', 'b')`),
+  check('eval_case_results_values_valid', sql`${t.durationMs} >= 0 AND (${t.estimatedCost} IS NULL OR ${t.estimatedCost} >= 0)`),
+]);
+
+export type RatingRow = typeof ratings.$inferSelect;
+export type RatingVersionRow = typeof ratingVersions.$inferSelect;
+export type BadCaseRow = typeof badCases.$inferSelect;
+export type ImprovementProposalRow = typeof improvementProposals.$inferSelect;
+export type EvalCaseRow = typeof evalCases.$inferSelect;
+export type EvalExperimentRow = typeof evalExperiments.$inferSelect;
+export type EvalCaseResultRow = typeof evalCaseResults.$inferSelect;

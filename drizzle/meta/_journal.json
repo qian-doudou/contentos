@@ -113,6 +113,13 @@
       "when": 1788966807294,
       "tag": "0015_typical_living_lightning",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "6",
+      "when": 1788975873313,
+      "tag": "0016_lonely_red_skull",
+      "breakpoints": true
     }
   ]
 }

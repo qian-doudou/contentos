@@ -13,6 +13,7 @@ import { approvalDecisionService, publicReviewService } from '@/lib/reviews/serv
 import { performanceService } from '@/lib/performance/service';
 import { strategyReviewService } from '@/lib/strategy-review/service';
 import { opsService } from '@/lib/ops/service';
+import { qualityService } from '@/lib/evals/service';
 import { z } from 'zod';
 
 export const DEV_USER_COOKIE = 'contentos_dev_user_id';
@@ -94,6 +95,10 @@ export function currentStrategyReviews(request?: Request) {
 export function currentOps(request?: Request) {
   const { organizationId, userId } = localContextIds(request);
   return opsService(db, organizationId, userId);
+}
+export function currentQuality(request?: Request) {
+  const { organizationId, userId } = localContextIds(request);
+  return qualityService(db, organizationId, userId);
 }
 export function publicReview() {
   return publicReviewService(db);

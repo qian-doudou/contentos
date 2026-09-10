@@ -48,3 +48,21 @@ export const plannerSessionStatuses = ['generating', 'awaiting_selection', 'comp
 export const plannerCandidateStatuses = ['active', 'replaced', 'persisted', 'dismissed'] as const;
 export const plannerQualityStatuses = ['passed', 'warning', 'blocked'] as const;
 export const duplicateLevels = ['new', 'mild', 'remixable', 'high'] as const;
+export const ratingIssueTags = [
+  'brand_fact_error', 'expired_information', 'duplicate_content', 'wrong_style',
+  'unusable_script', 'wrong_content_goal', 'poor_strategy', 'invalid_json',
+  'context_missing', 'other',
+] as const;
+export const badCaseCategories = [
+  ...ratingIssueTags,
+  'low_rating', 'memory_status_violation', 'high_duplicate_default',
+  'schema_repeated_failure', 'manual_flag',
+] as const;
+export const badCaseSeverities = ['low', 'medium', 'high', 'critical'] as const;
+export const badCaseStatuses = ['open', 'investigating', 'resolved', 'dismissed'] as const;
+export const improvementProposalStatuses = ['draft', 'evaluated', 'applied', 'rejected'] as const;
+export const evalCaseSourceTypes = ['bad_case', 'high_rating_production', 'manual'] as const;
+export const evalCaseStatuses = ['active', 'inactive'] as const;
+export const evalExperimentStatuses = ['running', 'completed', 'failed'] as const;
+export const evalVerdicts = ['data_insufficient', 'passed', 'regressed'] as const;
+export const evalVariants = ['a', 'b'] as const;
