@@ -1,6 +1,8 @@
 # ContentOS
 
-ContentOS 是面向本地生活短视频代运营团队的 AI 内容运营与项目管理平台。当前已完成第十六阶段 Feedback & Eval：Production Run 支持版本化人工评分；规则与人工反馈沉淀为 Bad Case；Prompt 改进只生成隔离 Draft，并且必须经过行级 Diff、冻结输入 A/B、确定性上线门槛和人工确认后才能创建新的组织级生产 Skill 版本。
+ContentOS 是面向本地生活短视频代运营团队的 AI 内容运营与项目管理平台。当前完成第十七阶段最终 MVP 联调：从客户主数据、Memory、月计划、历史召回、AI Planner、脚本审核、拍摄、剪辑、发布、Performance 到策略复盘的主链已通过跨服务集成测试；Production Run 到评分、Bad Case、Prompt Draft、Diff、A/B、人工应用和新版本 Run 追踪的质量链同步打通。
+
+产品边界仍是本地 MVP：没有真实认证、抖音 API、自动发布、自动同步 GMV、支付、视频生成或自动剪辑。Demo 数据和指标均以 `is_demo=true` 与生产数据区分。
 
 ## 本地运行
 
@@ -11,6 +13,7 @@ npm install
 cp .env.example .env.local
 npm run db:migrate
 npm run db:seed
+npm run demo:verify
 npm run dev
 ```
 
@@ -45,13 +48,25 @@ Embedding 使用 `EMBEDDING_BASE_URL` / `EMBEDDING_API_KEY` / `EMBEDDING_MODEL`�
 
 权限通过 `lib/auth/permissions.ts` 统一校验。请求其他组织的 ID 返回 404；请求同组织但未授权的客户返回 403，不用空数组掩盖越权。
 
+## 系统架构与数据模型
+
+`app/` 中的 Next.js App Router 页面只通过 `/api/*` 读写数据；API 统一进入错误信封、开发身份与组织上下文；`lib/` 中的领域服务负责权限、枚举、状态机、配额、事务和聚合计算；`db/schema.ts` 与 Drizzle Migration 负责 SQLite 复合外键、唯一约束、Check 和防绕过 Trigger。前端没有 SQLite 访问路径。
+
+AI 路径为“确定性上下文/指标 → 统一 Skill 版本 → 百炼 OpenAI Compatible Client 或确定性 Mock → Zod/JSON Schema 验证 → 业务事务”。每次调用写 `runs` / `run_steps` / `ai_usage_logs`，业务持久化成功后才写 Points Ledger。
+
+核心数据关系是 Organization → Client → Brand → Store → Account → Monthly Plan / Content。Content 再关联不可变 Script/Edit Version、Approval、Shoot Checklist、Publish、Performance Snapshot、Memory/Context Snapshot 和 Run Trace。所有组织业务表保留 `organization_id`，多态关系也在服务或数据库 Trigger 中复核组织归属。
+
+## Content 状态机
+
+通用状态转换只允许 `IDEA → SCRIPTING → WAITING_APPROVAL`，审核可回到 `SCRIPTING` 或进入 `APPROVED`；拍摄业务事务负责 `APPROVED → WAITING_SHOOT → SHOT`；剪辑事务负责 `SHOT → EDITING → WAITING_REVIEW ↔ REVISION → READY_TO_PUBLISH`；发布事务负责 `READY_TO_PUBLISH → PUBLISHED`，复盘可进入 `REVIEWED`。从未执行拍摄移除时允许 `WAITING_SHOOT → APPROVED`。其他组合均由服务端拒绝，所有成功转换追加 `content_status_logs`。
+
 ## 页面
 
 - `/clients`：按名称、行业、负责人、合作状态筛选和分页。
 - `/clients/new`：创建客户。
 - `/clients/[id]`：客户资料及其品牌、门店、账号层级。
 - `/accounts`：按客户 → 品牌 → 门店 → 账号分组管理。
-- `/accounts/[id]`：账号定位、目标、内容风格、禁用风格及明确标记为未实现的内容统计。
+- `/accounts/[id]`：账号定位、目标、内容风格、禁用风格及按 organization + account 实时计算的内容/已发布统计。
 - `/contents/import`：上传 CSV / JSON，预览逐行校验、重复与错误后再正式写入。
 - `/ai/memory`：按可访问账号管理品牌/账号 Memory、新增替代、停用、档案初始化和 Context 快照预览。账号详情同步提供 Memory Tab。
 - `/ai/dedup-test`：输入候选选题，查看同账号 Top10、规则分数、Top5 Skill 输入、LLM / Mock 判定与 Fallback 状态。
@@ -81,8 +96,10 @@ Embedding 使用 `EMBEDDING_BASE_URL` / `EMBEDDING_API_KEY` / `EMBEDDING_MODEL`�
 - 默认数据库：`./data/contentos.db`，可通过 `DATABASE_PATH` 修改。
 - Schema：`db/schema.ts`。
 - Migration：`drizzle/`。
-- Seed：`npm run db:seed`，幂等写入带 `is_demo` 标识的组织、5 位可切换成员、客户授权关系、德祥楼业务层级、2026 年 9 月计划、结构化内容、3 条历史内容、6 条已确认档案 Memory、9 个系统 Skill 及版本快照（含只用于 Eval 的 `prompt_improver`）、2026 演示 AI 额度、运营风险阈值配置，以及待拍摄和已拍摄的真实工作流演示数据。不预置虚构经营指标、Performance Snapshot、评分、Bad Case 或模型价格。
+- Seed：`npm run db:seed`，幂等写入带 `is_demo=true` 标识的组织、5 位可切换成员、三个客户完整层级、月度计划、每账号至少 20 条历史内容、合法发布记录、每条两个时间点的模拟 Performance Snapshot、Fallback Embedding、可追溯 Memory 和工作流样例。所有指标均是明确标注的演示样本，不代表真实经营结果。不预置模型价格，所以 estimated cost 仍会显示“未知”。
 - 恢复演示数据：`npm run db:reset`，或在开发环境调用 `POST /api/dev/reset` 并传入 `{ "confirm": "RESET_DEMO" }`。该操作只恢复固定 demo ID，不物理删除业务记录，也不绕过状态机重置已有内容的工作流状态。
+
+`npm run demo:verify` 是只读验证：它会确认 3 个 Demo 客户、每账号历史数量、发布/快照/Embedding 数量、程序聚合指标、Memory 来源、Context 预算，以及 superseded 旧团购价不进入 Context。
 
 所有时间以 ISO 8601 文本保存，所有业务 ID 使用 UUID。核心层级通过包含 `organization_id` 的复合外键约束，服务层所有 ID 查询同时带组织条件。数据库文件被 Git 忽略，进程重启和页面刷新不会清空数据。
 
@@ -276,15 +293,38 @@ Skill 的 Input/Output Schema 在写入和执行时都经 Zod 校验。Productio
 
 - Organization：星火本地生活运营有限公司
 - Users：运营负责人、运营A、摄影A、剪辑A、查看者
-- Client / Brand：德祥楼，餐饮 / 铜锅涮羊肉，城市菏泽
-- Store：德祥楼（演示门店）
-- Account：德祥楼老板IP，目标为本地曝光、老板人设、团购转化
-- Monthly Plan：2026 年 9 月，计划 8 条，人设/产品/本地/转化各 25%
-- Content：《老板带你认识鲁西南铜锅涮》待办内容，另有 3 条用于 Top10 召回的演示历史内容；均不含脚本正文或虚构经营指标
+- Clients：德祥楼、叶家渔、仁爱宠物医院，均有独立 Brand / Store / Douyin Account 层级
+- Accounts：德祥楼老板IP、叶家渔掌柜IP、仁爱宠物医生IP；运营A和查看者均通过 `client_members` 授权
+- Monthly Plans：三个账号各有 2026 年 9 月、8 条的演示计划
+- Historical Content：德祥楼 23 条，另两个账号各 20 条；包含高度重复主题、同 Topic 不同 Angle、高播放人设、低播放高转化团购和表现较差环境样本
+- Performance：每个账号至少 20 条合法 Publish、每条 2 个累计时间点 Snapshot；均为 `is_demo=true` 的模拟指标
 - Shoot：2026-09-10 德祥楼待拍演示排期；另有 1 场已完成拍摄及状态日志
 - Edit：《老板带你看传统铜锅怎么开锅》已处于 `SHOT`，分配给剪辑 A，可直接演示开始剪辑与成片审核闭环
 - AI：9 个系统内置 Skill；Planner、脚本、去重、质量、表现分析和策略规划均保留 v1 并使用阶段化 v2 协议，另含不计正式 Points 的 Prompt 改进 Skill；演示组织当期 1000 Points，初始已用 0
-- Memory：从德祥楼 Brand/Account 已确认字段初始化 6 条，`source_type=brand_profile`、`confidence=1`
+- Memory：三个账号的 Brand/Profile 基础记忆；另有已确认 Preference、Performance、Strategy Memory，以及“旧99元 → 当88元”的 superseded 团购价样例
+
+## Demo 演示路径
+
+1. 执行 `npm run db:reset && npm run demo:verify`，再启动 `npm run dev`。
+2. 在顶部开发用户切换器中切换运营负责人、运营A、摄影A、剪辑A和查看者，观察服务端范围变化。
+3. 打开 `/accounts/0198f744-8e18-7ae2-a780-52a0e20c1944` 查看德祥楼账号与真实内容统计。
+4. 在账号 Memory Tab 查看基础 Memory、已确认规律和已替代旧团购价。
+5. 进入 `/contents/plans/new` 创建一个不重复月份的月度计划。
+6. 进入 `/contents/import`，上传 CSV/JSON，先预览校验，再提交并观察 Fallback Embedding。
+7. 进入 `/ai/planner`，选德祥楼，输入 8 条和本次目标，不重复填写品牌档案。
+8. 检查每条候选的 Top10、规则分、重复等级和 Fallback 标识。
+9. 对一条候选执行“换角度”，确认新版本重新运行召回与去重。
+10. 只勾选可选候选并保存，在 `/contents/[id]` 确认只有 selected 内容入库。
+11. 在内容详情使用 Mock/Live 生成 Script V1，再人工修改为 V2；版本列表应保留 V1。
+12. 提交脚本审核，通过内部审核或 `/review/[token]` 客户链接批准 V2。
+13. 进入 `/shoots` 创建排期，只加入已批准且有 Active Approved Script 的内容。
+14. 切换摄影A，在 `/shoots/[id]` Checklist 标记已拍，确认 Content 进入 `SHOT`。
+15. 分配剪辑A，提交成片 V1，审核退回，再提交 V2 并通过 Final Review。
+16. 在内容详情创建 Publish，确认 Publish、`PUBLISHED` 状态和 Status Log 同时落库。
+17. 为该 Publish 录入两个不同时间点 Performance Snapshot，在 `/analytics/content` 查看公式指标。
+18. 进入 `/ai/reviews`，先预览程序聚合事实，再生成 AI 复盘；确认 Performance/Strategy Memory 并创建下月 Plan 草案。
+19. 进入 `/ops`、`/ops/ai-cost` 和 `/ops/runs/[id]` 查看履约风险、事实指标、unknown 成本和完整 Run Trace。
+20. 在 `/evals` 为 Production Run 打低分形成 Bad Case，创建 Prompt Draft；在 `/evals/proposals/[id]` 查看 Diff，用至少 3 个 Eval Case 跑 A/B，只在门槛通过后人工应用新 Skill 版本。
 
 ## 质量检查
 
@@ -295,9 +335,34 @@ npm test
 npm run build
 ```
 
-## 当前边界
+## 异常状态与恢复动作
 
-当前未接入真实 OAuth、抖音 API、大型素材文件上传、自动发布、自动同步 GMV、支付、视频生成、自动剪辑、数字人或企业生产数据。发布与表现数据只支持人工录入和 CSV 导入；Seed 不预置虚构经营指标，因此首次策略复盘前需要先录入有效 Snapshot。外部审核 Token 适用于本地 MVP 演示，尚未接入短信、邮件或企业客户身份体系；原始 Token 只在提交或重发审核响应中返回一次。真实百炼调用需配置有效 Key 并为实际模型名添加价格配置；没有价格时成本显示“未知”。
+| 场景 | HTTP / 业务码 | 恢复动作 |
+| --- | --- | --- |
+| 无权限 / 未分配客户 | `403 PERMISSION_DENIED` | 切换有权身份或由 Owner/Admin 配置 `client_members` |
+| 跨组织 ID / 对象不存在 | `404 NOT_FOUND` | 返回列表重新选择，不暴露其他租户存在性 |
+| 层级外键错误 | `409 HIERARCHY_MISMATCH` / `PLAN_ACCOUNT_MISMATCH` | 重新选择同一 Client 链路中的对象 |
+| 月度计划重复 | `409 PLAN_PERIOD_CONFLICT` | 打开已有计划编辑，不覆盖原记录 |
+| 无月度计划 | Planner 仍运行，缺口为空 | 可先创建计划，或明确继续无计划候选 |
+| 无历史内容 / 无 Embedding Key | Top10 为空 / `fallback_bigram` | 允许继续；导入历史或配置百炼 Embedding Key 后刷新 |
+| Embedding 源字段变更 | 旧向量 `stale` | 调用同步接口；失败时自动回退确定性向量 |
+| 无 LLM Key | `mode=mock` | 核心演示继续，Run 明确标记 Mock |
+| LLM 超时/网络错误 | 最多重试 1 次，最终 `502 LLM_CALL_FAILED` | 保留失败 Run/usage，不扣 Points；可重试业务动作 |
+| LLM 非法 JSON / Schema 错误 | `502 LLM_OUTPUT_INVALID` 或业务级输出校验码 | 不写业务表、不扣 Points；连续错误可扫描为 Bad Case |
+| AI 额度不足 | `402 AI_QUOTA_EXCEEDED` | 由管理员调整额度或等待新周期；正式任务不发起调用 |
+| Memory 同 key 冲突 | 服务自动“新增替代”；数据库唯一 Active | 刷新 Memory 列表，不编辑历史正文 |
+| superseded/过期价格 | 不进入 Context；无来源动态事实记 `unverified_dynamic_fact` | 新增已确认 Active Memory，再重新生成 |
+| 无 Performance / 样本不足 | `409 INSUFFICIENT_PERFORMANCE_DATA` / `PERFORMANCE_SAMPLE_BELOW_THRESHOLD` | 先录入快照；样本不足可看 AI 草案但不保存 Performance Memory |
+| 非法状态转换 | `409 INVALID_STATUS_TRANSITION` 或对应业务码 | 刷新对象并通过 Approval/Shoot/Edit/Publish 正确入口执行 |
+| Review Token 错误/过期 | `404 REVIEW_LINK_NOT_FOUND` / `410 REVIEW_LINK_EXPIRED` | 返回运营端为当前版本重发链接 |
+| SQLite 写入或事务副作用失败 | `500 INTERNAL_ERROR` | 整个业务事务回滚；使用 `request_id` 查 Run/服务日志后重试 |
+| 前端 API 失败 | 业务化错误卡片 | 保留当前页面上下文，使用“重试”或返回上级 |
+
+## 已知限制与未来迁移
+
+当前未接入真实 OAuth、抖音 API、大型素材文件上传、自动发布、自动同步 GMV、支付、视频生成、自动剪辑、数字人或企业生产数据。发布与表现数据只支持人工录入和 CSV 导入；Seed 预置的 Performance 全部是带 `is_demo=true` 的可重复验证样本，不可用于经营决策。外部审核 Token 只在提交或重发响应中返回一次，尚未接入短信、邮件或企业客户身份体系。真实百炼调用需配置有效 Key 并为实际模型名添加价格配置；没有价格时成本显示“未知”。
+
+接入真实认证时，保留现有 `organization_id` 与权限服务，将本地 Cookie 切换器替换为受信任 Session/JWT 中间件，并由服务端会话解析 Organization/User；不接受前端传入 organization ID。接入抖音 API 时，建议新增加密的账号授权表、OAuth 回调状态、同步水位和幂等外部事件表；发布仍复用现有 Publish 事务边界，Performance API 同步只追加 Snapshot，不覆盖历史。
 
 本阶段没有实现 LLM-as-Judge；所有上线结论只使用可复现的 Schema、规则、人工标注和成本/耗时指标。质量中心只扫描最近 100 个 Production Run，历史更早 Run 需要后续批处理能力。
 

@@ -129,6 +129,24 @@ describe('OpenAI-compatible LLM client', () => {
     expect(permanent).toHaveBeenCalledOnce();
   });
 
+  it('retries a network failure once and exposes the actual attempt count', async () => {
+    const unavailable = vi
+      .fn<typeof fetch>()
+      .mockRejectedValue(new TypeError('fetch failed'));
+    const client = new OpenAICompatibleClient(
+      getLlmConfig({ LLM_API_KEY: 'test-key' }),
+      { fetch: unavailable },
+    );
+    await expect(
+      client.complete({ messages: [{ role: 'user', content: '测试网络失败' }] }),
+    ).rejects.toMatchObject({
+      name: 'LlmRequestError',
+      message: 'fetch failed',
+      attempts: 2,
+    });
+    expect(unavailable).toHaveBeenCalledTimes(2);
+  });
+
   it('uses one JSON parser for plain and fenced model output', () => {
     expect(parseJsonOutput('{"ok":true}')).toEqual({ ok: true });
     expect(parseJsonOutput('```json\n{"ok":true}\n```')).toEqual({ ok: true });

@@ -6,7 +6,7 @@ import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '@/db/schema';
 import {
-  aiUsageLogs, badCases, evalCaseResults, improvementProposals, organizations,
+  aiUsageLogs, badCases, evalCaseResults, improvementProposals, organizationAiQuotas, organizations,
   runSteps, runs, skillVersions, skills, users,
 } from '@/db/schema';
 import { ApiError } from '@/lib/api/envelope';
@@ -114,6 +114,11 @@ beforeEach(() => {
     { id: ids.viewer, organizationId: ids.organization, name: '查看者', role: 'viewer', status: 'active', isDemo: false, createdAt: now, updatedAt: now },
     { id: ids.foreignOwner, organizationId: ids.foreignOrganization, name: '外部负责人', role: 'owner', status: 'active', isDemo: false, createdAt: now, updatedAt: now },
   ]).run();
+  db.insert(organizationAiQuotas).values({
+    id: crypto.randomUUID(), organizationId: ids.organization, periodStart: '2026-01-01T00:00:00.000Z',
+    periodEnd: '2027-01-01T00:00:00.000Z', quotaPoints: 100, usedPoints: 0,
+    isDemo: false, createdAt: now, updatedAt: now,
+  }).run();
   db.insert(skills).values([
     {
       id: ids.plannerSkill, organizationId: null, code: 'content_planner', name: '内容策划', description: '',
@@ -254,6 +259,15 @@ describe('Prompt draft, A/B Eval and release gate', () => {
     expect(db.select().from(skillVersions).where(eq(skillVersions.skillId, override.id)).all().map((row) => row.version).sort((a, b) => a - b)).toEqual([1, 2]);
     expect(aiInfrastructureService(db, ids.organization, ids.owner, { client: mockClient(), now: () => new Date(now) }).listSkills().items.filter((skill) => skill.code === 'content_planner')).toHaveLength(1);
     expect(db.select().from(improvementProposals).where(eq(improvementProposals.id, draft.id)).get()?.status).toBe('applied');
+    const nextProduction = await aiInfrastructureService(db, ids.organization, ids.owner, {
+      client: mockClient(), now: () => new Date(now),
+    }).executeProduction({
+      skillCode: 'content_planner', data: { brief: '新版本生产追踪' }, persistBusinessResult: () => undefined,
+    });
+    expect(nextProduction).toMatchObject({
+      run: { runType: 'production', status: 'completed' },
+      usage: { skillCode: 'content_planner', skillVersion: 2, billedPoints: 1 },
+    });
   });
 
   it('reports data insufficient below the minimum sample instead of announcing a winner', async () => {

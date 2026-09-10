@@ -35,7 +35,7 @@ export function AccountDetailPage({ id }: { id: string }) {
           { title: '账号目标', values: account.accountGoalJson }, { title: '内容风格', values: account.contentStyleJson },
           { title: '禁用风格', values: account.forbiddenStyleJson },
         ].map(item => <article className="surface-card" key={item.title}><h2 className="mb-4 font-semibold">{item.title}</h2><Tags values={item.values} /></article>)}</section>
-        <section className="surface-card"><h2 className="text-lg font-semibold">内容统计</h2><p className="mt-2 text-sm text-slate-500">后续阶段接入内容与发布记录；当前统计为占位，不代表实际经营数据。</p><div className="mt-5 grid grid-cols-2 gap-4"><div className="rounded-xl bg-slate-50 p-4"><p className="text-sm text-slate-500">内容总量</p><p className="mt-2 text-2xl">{contentStats.total}</p></div><div className="rounded-xl bg-slate-50 p-4"><p className="text-sm text-slate-500">已发布</p><p className="mt-2 text-2xl">{contentStats.published}</p></div></div></section>
+        <section className="surface-card"><h2 className="text-lg font-semibold">内容统计</h2><p className="mt-2 text-sm text-slate-500">从当前组织的 SQLite 内容库实时统计，不包含其他账号数据。</p><div className="mt-5 grid grid-cols-2 gap-4"><div className="rounded-xl bg-slate-50 p-4"><p className="text-sm text-slate-500">内容总量</p><p className="mt-2 text-2xl">{contentStats.total}</p></div><div className="rounded-xl bg-slate-50 p-4"><p className="text-sm text-slate-500">已发布</p><p className="mt-2 text-2xl">{contentStats.published}</p></div></div></section>
       </TabsContent>
       <TabsContent value="memory"><MemoryPanel accountId={account.id} compact /></TabsContent>
     </Tabs>

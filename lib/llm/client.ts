@@ -121,7 +121,22 @@ export function parseJsonOutput(text: string): unknown {
   }
 }
 
-class NonRetryableLlmError extends Error {}
+export class LlmRequestError extends Error {
+  constructor(
+    message: string,
+    readonly attempts: number,
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
+    this.name = 'LlmRequestError';
+  }
+}
+
+function failureMessage(error: unknown) {
+  if (error instanceof DOMException && error.name === 'AbortError')
+    return 'LLM 请求超时';
+  return error instanceof Error ? error.message : 'LLM 请求失败';
+}
 
 export class OpenAICompatibleClient {
   constructor(
@@ -200,7 +215,7 @@ export class OpenAICompatibleClient {
             lastError = error;
             continue;
           }
-          throw new NonRetryableLlmError(error.message);
+          throw new LlmRequestError(error.message, attempt, { cause: error });
         }
         const payload = completionResponseSchema.parse(await response.json());
         return {
@@ -219,15 +234,18 @@ export class OpenAICompatibleClient {
         };
       } catch (error) {
         lastError = error;
-        if (error instanceof NonRetryableLlmError) throw error;
-        if (attempt >= 2) throw error;
+        if (error instanceof LlmRequestError) throw error;
+        if (attempt >= 2)
+          throw new LlmRequestError(failureMessage(error), attempt, {
+            cause: error,
+          });
       } finally {
         clearTimeout(timer);
       }
     }
-    throw lastError instanceof Error
-      ? lastError
-      : new Error('LLM request failed');
+    throw new LlmRequestError(failureMessage(lastError), 2, {
+      cause: lastError,
+    });
   }
 
   async generateObject<T>(input: {

@@ -240,9 +240,20 @@ export function masterDataService(db: Database, organizationId: string, userId: 
     accountDetail(id: string) {
       return db.transaction(() => {
         const row = account(id);
+        const contentStats = db.select({
+          total: count(),
+          published: sql<number>`sum(case when ${tables.contents.status} in ('PUBLISHED', 'REVIEWED') then 1 else 0 end)`,
+        }).from(tables.contents).where(and(
+          eq(tables.contents.organizationId, organizationId),
+          eq(tables.contents.accountId, row.id),
+        )).get();
         return accountDetailSchema.parse({
           account: row, client: client(row.clientId), brand: brand(row.brandId), store: store(row.storeId),
-          contentStats: { total: 0, published: 0, implemented: false },
+          contentStats: {
+            total: contentStats?.total ?? 0,
+            published: contentStats?.published ?? 0,
+            implemented: true,
+          },
           permissions: access,
         });
       });

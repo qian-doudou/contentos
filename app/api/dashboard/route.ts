@@ -1,6 +1,6 @@
 import { and, asc, count, desc, eq } from 'drizzle-orm';
 import { db } from '@/db/client';
-import { runSteps, runs, users } from '@/db/schema';
+import { appSettings, runSteps, runs, users } from '@/db/schema';
 import { dashboardDataSchema } from '@/lib/contracts';
 import { fail, ok, requestId } from '@/lib/api/envelope';
 import { getLlmConfig } from '@/lib/llm/client';
@@ -35,6 +35,15 @@ export async function GET(request: Request) {
     const failedRunCount = canReadOrganizationOverview
       ? db.select({ value: count() }).from(runs).where(and(eq(runs.organizationId, organizationId), eq(runs.status, 'failed'))).get()?.value ?? 0
       : 0;
+    const phaseSetting = db.select({ valueJson: appSettings.valueJson }).from(appSettings).where(and(
+      eq(appSettings.organizationId, organizationId), eq(appSettings.key, 'product.phase'),
+    )).get();
+    const configuredPhase = (() => {
+      try {
+        const parsed = JSON.parse(phaseSetting?.valueJson ?? '{}') as { phase?: unknown };
+        return typeof parsed.phase === 'number' && Number.isInteger(parsed.phase) && parsed.phase > 0 ? parsed.phase : 17;
+      } catch { return 17; }
+    })();
 
     const data = dashboardDataSchema.parse({
       organization,
@@ -47,7 +56,7 @@ export async function GET(request: Request) {
       users: userRows,
       recentRuns: runRows.map((run) => ({ ...run, steps: steps.filter((step) => step.runId === run.id) })),
       workbench: currentOps(request).personalWorkbench(),
-      system: { database: 'connected', llmMode: getLlmConfig().mode, phase: 15 },
+      system: { database: 'connected', llmMode: getLlmConfig().mode, phase: configuredPhase },
       permissions: {
         canResetDemo: permissions.has('system.dangerous'),
         canReadTeam: permissions.has('team.read'),

@@ -18,6 +18,7 @@ import { ApiError } from '@/lib/api/envelope';
 import { assertNonProductionAiAllowed } from '@/lib/ops/config';
 import { sanitizeTraceJson } from '@/lib/ops/trace-safety';
 import {
+  LlmRequestError,
   OpenAICompatibleClient,
   parseJsonOutput,
   type LlmCompletion,
@@ -278,6 +279,7 @@ export function aiInfrastructureService(
     skill: z.infer<typeof skillSchema>;
     scope: { clientId: string | null; accountId: string | null };
     completion: LlmCompletion | null;
+    attempts?: number;
     status: 'completed' | 'failed';
     billedPoints: number;
     durationMs: number;
@@ -309,7 +311,7 @@ export function aiInfrastructureService(
         effectivePrice(model, createdAt),
       ),
       billedPoints: args.billedPoints,
-      attempts: args.completion?.attempts ?? 1,
+      attempts: args.completion?.attempts ?? args.attempts ?? 1,
       durationMs: args.durationMs,
       status: args.status,
       isDemo,
@@ -484,6 +486,7 @@ export function aiInfrastructureService(
     );
     const invokeStarted = now().getTime();
     let completion: LlmCompletion | null = null;
+    let invocationFailure: LlmRequestError | null = null;
     let rawOutput = '';
     let parsedJson: unknown = null;
     let issues: string[] = [];
@@ -524,6 +527,9 @@ export function aiInfrastructureService(
         }
       }
     } catch (error) {
+      invocationFailure = error instanceof LlmRequestError
+        ? error
+        : new LlmRequestError(error instanceof Error ? error.message : 'LLM 调用失败', 1, { cause: error });
       issues = [error instanceof Error ? error.message : 'LLM 调用失败'];
     }
     const durationMs =
@@ -535,6 +541,7 @@ export function aiInfrastructureService(
     });
     if (issues.length > 0) {
       const finishedAt = timestamp();
+      const failureCode = invocationFailure ? 'LLM_CALL_FAILED' : 'LLM_OUTPUT_INVALID';
       const usage = db.transaction(() => {
         db.update(tables.runs)
           .set({ status: 'failed', finishedAt })
@@ -549,7 +556,7 @@ export function aiInfrastructureService(
           .set({
             status: 'failed',
             outputJson,
-            errorJson: JSON.stringify({ code: 'LLM_OUTPUT_INVALID', issues }),
+            errorJson: JSON.stringify({ code: failureCode, issues }),
             finishedAt,
             durationMs,
           })
@@ -567,6 +574,7 @@ export function aiInfrastructureService(
           skill,
           scope,
           completion,
+          attempts: invocationFailure?.attempts,
           status: 'failed',
           billedPoints: 0,
           durationMs,
@@ -582,7 +590,7 @@ export function aiInfrastructureService(
           ...tracking.step,
           status: 'failed',
           outputJson,
-          errorJson: JSON.stringify({ code: 'LLM_OUTPUT_INVALID', issues }),
+          errorJson: JSON.stringify({ code: failureCode, issues }),
           finishedAt,
           durationMs,
         }),
@@ -592,7 +600,7 @@ export function aiInfrastructureService(
         schemaResult: { valid: false, issues },
         usage,
         mode: client.mode,
-        attempts: completion?.attempts ?? (client.mode === 'live' ? 2 : 1),
+        attempts: completion?.attempts ?? invocationFailure?.attempts ?? 1,
       };
     }
 

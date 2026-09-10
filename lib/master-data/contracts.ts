@@ -86,7 +86,11 @@ export const hierarchySchema = z.object({
 });
 export const accountDetailSchema = z.object({
   account: accountSchema, client: clientSchema, brand: brandSchema, store: storeSchema,
-  contentStats: z.object({ total: z.literal(0), published: z.literal(0), implemented: z.literal(false) }),
+  contentStats: z.object({
+    total: z.number().int().nonnegative(),
+    published: z.number().int().nonnegative(),
+    implemented: z.literal(true),
+  }),
   permissions: masterDataPermissionsSchema,
 });
 export type Client = z.infer<typeof clientSchema>;

@@ -513,4 +513,26 @@ describe('Run, usage, pricing and Points', () => {
     });
     expect(db.select().from(aiPointLedger).all()).toEqual([]);
   });
+
+  it('records live invocation failures separately from invalid model JSON', async () => {
+    const unavailable = vi
+      .fn<typeof fetch>()
+      .mockRejectedValue(new TypeError('fetch failed'));
+    const client = new OpenAICompatibleClient(
+      getLlmConfig({ LLM_API_KEY: 'test-key' }),
+      { fetch: unavailable },
+    );
+    const result = await service(ids.owner, client).testSkill(ids.skill, {
+      input: { brief: '网络失败' },
+    });
+    expect(result).toMatchObject({
+      run: { status: 'failed' },
+      usage: { status: 'failed', attempts: 2, billedPoints: 0 },
+      attempts: 2,
+    });
+    expect(JSON.parse(result.step.errorJson ?? '{}')).toMatchObject({
+      code: 'LLM_CALL_FAILED',
+    });
+    expect(unavailable).toHaveBeenCalledTimes(2);
+  });
 });

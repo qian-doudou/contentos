@@ -2,9 +2,9 @@ import { createHash } from 'node:crypto';
 import { and, eq, isNull } from 'drizzle-orm';
 import { db, sqlite } from './client';
 import {
-  accounts, appSettings, auditLogs, brands, clientMembers, clients, contents, monthlyPlans,
-  contentStatusLogs, memories, organizationAiQuotas, organizations, scriptVersions, shootContents, shoots,
-  skillVersions, skills, stores, users,
+  accounts, appSettings, auditLogs, brands, clientMembers, clients, contentEmbeddings, contents, editVersions, monthlyPlans,
+  contentStatusLogs, memories, organizationAiQuotas, organizations, performanceSnapshots, publishes,
+  scriptVersions, shootContents, shoots, skillVersions, skills, stores, users,
 } from './schema';
 import { accountSchema, brandSchema, clientSchema, storeSchema, accountDefaults, brandDefaults, clientDefaults, storeDefaults } from '../lib/master-data/contracts';
 import { contentSchema, monthlyPlanSchema } from '../lib/content/contracts';
@@ -23,6 +23,7 @@ import {
 } from '../lib/strategy-review/contracts';
 import { DEFAULT_OPS_CONFIG } from '../lib/ops/config';
 import { promptImproverInputJsonSchema, promptImproverOutputJsonSchema } from '../lib/evals/contracts';
+import { contentSourceHash, weightedTermVector } from '../lib/history/similarity';
 
 export const DEMO_IDS = {
   organization: '0198f744-8e18-7ae2-a780-52a0e20c1931',
@@ -63,7 +64,23 @@ export const DEMO_IDS = {
   editShootItem: '0198f744-8e18-7ae2-a780-52a0e20c19b4',
   editScheduledLog: '0198f744-8e18-7ae2-a780-52a0e20c19b5',
   editShotLog: '0198f744-8e18-7ae2-a780-52a0e20c19b6',
+  yejiyuClient: '0198f744-8e18-7ae2-a780-52a0e20c1c01',
+  yejiyuBrand: '0198f744-8e18-7ae2-a780-52a0e20c1c02',
+  yejiyuStore: '0198f744-8e18-7ae2-a780-52a0e20c1c03',
+  yejiyuAccount: '0198f744-8e18-7ae2-a780-52a0e20c1c04',
+  petClient: '0198f744-8e18-7ae2-a780-52a0e20c1c11',
+  petBrand: '0198f744-8e18-7ae2-a780-52a0e20c1c12',
+  petStore: '0198f744-8e18-7ae2-a780-52a0e20c1c13',
+  petAccount: '0198f744-8e18-7ae2-a780-52a0e20c1c14',
+  confirmedPreferenceMemory: '0198f744-8e18-7ae2-a780-52a0e20c1c21',
+  confirmedPerformanceMemory: '0198f744-8e18-7ae2-a780-52a0e20c1c22',
+  confirmedStrategyMemory: '0198f744-8e18-7ae2-a780-52a0e20c1c23',
+  supersededGroupbuyPriceMemory: '0198f744-8e18-7ae2-a780-52a0e20c1c24',
+  activeGroupbuyPriceMemory: '0198f744-8e18-7ae2-a780-52a0e20c1c25',
 } as const;
+
+const demoUuid = (series: number, index: number) =>
+  `0198f744-8e18-7ae2-a780-${series.toString(16).padStart(4, '0')}${index.toString(16).padStart(8, '0')}`;
 
 const duplicateJudgeV2VersionId = '0198f744-8e18-7ae2-a780-52a0e20c1b14';
 const contentPlannerV2VersionId = '0198f744-8e18-7ae2-a780-52a0e20c1b11';
@@ -441,8 +458,7 @@ export function seedDemoData(options: { reset?: boolean } = {}) {
         createdBy: null, isDemo: false, createdAt: now }).onConflictDoNothing().run();
     }
 
-    db.insert(organizationAiQuotas)
-      .values({
+    const demoQuota = {
         id: DEMO_IDS.aiQuota,
         organizationId: DEMO_IDS.organization,
         periodStart: '2026-01-01T00:00:00.000Z',
@@ -452,16 +468,20 @@ export function seedDemoData(options: { reset?: boolean } = {}) {
         isDemo: true,
         createdAt: now,
         updatedAt: now,
-      })
-      .onConflictDoNothing()
-      .run();
+      };
+    if (options.reset) db.insert(organizationAiQuotas).values(demoQuota).onConflictDoUpdate({
+      target: organizationAiQuotas.id,
+      set: { quotaPoints: demoQuota.quotaPoints, usedPoints: 0, isDemo: true, updatedAt: now },
+      setWhere: and(eq(organizationAiQuotas.organizationId, DEMO_IDS.organization), eq(organizationAiQuotas.isDemo, true)),
+    }).run();
+    else db.insert(organizationAiQuotas).values(demoQuota).onConflictDoNothing().run();
 
     db.insert(appSettings)
       .values({
         id: DEMO_IDS.phaseSetting,
         organizationId: DEMO_IDS.organization,
         key: 'product.phase',
-        valueJson: JSON.stringify({ phase: 16, label: 'Feedback & Eval' }),
+        valueJson: JSON.stringify({ phase: 17, label: 'Final Integration' }),
         isSecret: false,
         isDemo: true,
         createdAt: now,
@@ -469,7 +489,7 @@ export function seedDemoData(options: { reset?: boolean } = {}) {
       })
       .onConflictDoUpdate({
         target: [appSettings.organizationId, appSettings.key],
-        set: { valueJson: JSON.stringify({ phase: 16, label: 'Feedback & Eval' }), updatedAt: now },
+        set: { valueJson: JSON.stringify({ phase: 17, label: 'Final Integration' }), updatedAt: now },
       })
       .run();
 
@@ -515,6 +535,40 @@ export function seedDemoData(options: { reset?: boolean } = {}) {
       clientId: c.id, brandId: b.id, storeId: s.id, accountName: '德祥楼老板IP', accountType: 'owner_ip',
       accountGoalJson: ['本地曝光', '老板人设', '团购转化'], contentStyleJson: ['真实', '自然', '本地感'],
       forbiddenStyleJson: ['过度卖惨', '虚假夸张'] });
+    const additionalHierarchyDefinitions = [
+      {
+        ids: { client: DEMO_IDS.yejiyuClient, brand: DEMO_IDS.yejiyuBrand, store: DEMO_IDS.yejiyuStore, account: DEMO_IDS.yejiyuAccount },
+        slug: 'yejiyu', clientName: '叶家渔', industry: '餐饮', subIndustry: '本地河鲜', city: '菏泽',
+        positioning: '菏泽本地河鲜与家宴菜品牌', products: ['黄河鲤鱼', '现烧河鲜'],
+        sellingPoints: ['当日备菜', '明档制作', '本地家宴口味'], accountName: '叶家渔掌柜IP',
+        goals: ['本地曝光', '到店转化', '菜品信任'], styles: ['热闹', '真实', '家宴感'], forbidden: ['虚构食材产地', '夸张份量'],
+      },
+      {
+        ids: { client: DEMO_IDS.petClient, brand: DEMO_IDS.petBrand, store: DEMO_IDS.petStore, account: DEMO_IDS.petAccount },
+        slug: 'renai-pet', clientName: '仁爱宠物医院', industry: '宠物服务', subIndustry: '宠物医疗', city: '菏泽',
+        positioning: '面向菏泽家庭的专业、克制、可理解的宠物医疗科普', products: ['宠物健康检查', '疫苗与驱虫'],
+        sellingPoints: ['检查流程透明', '医生科普易懂', '分诊建议克制'], accountName: '仁爱宠物医生IP',
+        goals: ['本地曝光', '医生人设', '预约转化'], styles: ['专业', '温和', '通俗'], forbidden: ['过度恐吓', '无依据诊断'],
+      },
+    ] as const;
+    const additionalHierarchies = additionalHierarchyDefinitions.map((definition) => {
+      const client = clientSchema.parse({ ...clientDefaults, ...demoMetadata, id: definition.ids.client,
+        clientName: definition.clientName, industry: definition.industry, subIndustry: definition.subIndustry,
+        cooperationStatus: 'active', monthlyContentTarget: 8, ownerUserId: DEMO_IDS.owner, notes: '明确标记的 ContentOS 演示客户。' });
+      const brand = brandSchema.parse({ ...brandDefaults, ...demoMetadata, id: definition.ids.brand, clientId: client.id,
+        brandName: definition.clientName, industry: definition.industry, subIndustry: definition.subIndustry,
+        city: definition.city, brandPositioning: definition.positioning, targetAudienceJson: [`${definition.city}本地家庭`],
+        coreProductsJson: [...definition.products], coreSellingPointsJson: [...definition.sellingPoints],
+        brandToneJson: [...definition.styles], forbiddenTopicsJson: [...definition.forbidden] });
+      const store = storeSchema.parse({ ...storeDefaults, ...demoMetadata, id: definition.ids.store, brandId: brand.id,
+        storeName: `${definition.clientName}（演示门店）`, city: definition.city, district: '牡丹区',
+        address: '仅供本地 Demo 展示，非真实生产地址', storeType: '单店' });
+      const account = accountSchema.parse({ ...accountDefaults, ...demoMetadata, id: definition.ids.account,
+        clientId: client.id, brandId: brand.id, storeId: store.id, accountName: definition.accountName,
+        accountType: 'owner_ip', accountGoalJson: [...definition.goals], contentStyleJson: [...definition.styles],
+        forbiddenStyleJson: [...definition.forbidden] });
+      return { ...definition, client, brand, store, account };
+    });
     if (options.reset) {
       // Restore only known demo IDs in their own organization; never physically delete business records.
       db.insert(clients).values(c).onConflictDoUpdate({ target: clients.id, set: c,
@@ -532,14 +586,52 @@ export function seedDemoData(options: { reset?: boolean } = {}) {
       db.insert(accounts).values(a).onConflictDoNothing().run();
     }
 
+    for (const hierarchy of additionalHierarchies) {
+      if (options.reset) {
+        db.insert(clients).values(hierarchy.client).onConflictDoUpdate({ target: clients.id, set: hierarchy.client,
+          setWhere: and(eq(clients.organizationId, hierarchy.client.organizationId), eq(clients.isDemo, true)) }).run();
+        db.insert(brands).values(hierarchy.brand).onConflictDoUpdate({ target: brands.id, set: hierarchy.brand,
+          setWhere: and(eq(brands.organizationId, hierarchy.brand.organizationId), eq(brands.isDemo, true)) }).run();
+        db.insert(stores).values(hierarchy.store).onConflictDoUpdate({ target: stores.id, set: hierarchy.store,
+          setWhere: and(eq(stores.organizationId, hierarchy.store.organizationId), eq(stores.isDemo, true)) }).run();
+        db.insert(accounts).values(hierarchy.account).onConflictDoUpdate({ target: accounts.id, set: hierarchy.account,
+          setWhere: and(eq(accounts.organizationId, hierarchy.account.organizationId), eq(accounts.isDemo, true)) }).run();
+      } else {
+        db.insert(clients).values(hierarchy.client).onConflictDoNothing().run();
+        db.insert(brands).values(hierarchy.brand).onConflictDoNothing().run();
+        db.insert(stores).values(hierarchy.store).onConflictDoNothing().run();
+        db.insert(accounts).values(hierarchy.account).onConflictDoNothing().run();
+      }
+    }
+    const allDemoHierarchies = [
+      {
+        slug: 'dexianglou', client: c, brand: b, store: s, account: a,
+        product: '手切羊肉', localScene: '菏泽铜锅涮门店', persona: '老板',
+      },
+      ...additionalHierarchies.map((hierarchy) => ({
+        slug: hierarchy.slug,
+        client: hierarchy.client,
+        brand: hierarchy.brand,
+        store: hierarchy.store,
+        account: hierarchy.account,
+        product: hierarchy.products[0],
+        localScene: `${hierarchy.city}${hierarchy.clientName}门店`,
+        persona: hierarchy.slug === 'renai-pet' ? '医生' : '掌柜',
+      })),
+    ];
+
     for (const membership of [
       { id: DEMO_IDS.operatorMembership, userId: DEMO_IDS.operator },
       { id: DEMO_IDS.viewerMembership, userId: DEMO_IDS.viewer },
+      ...additionalHierarchies.flatMap((hierarchy, index) => [
+        { id: demoUuid(0x110 + index, 1), userId: DEMO_IDS.operator, clientId: hierarchy.client.id },
+        { id: demoUuid(0x110 + index, 2), userId: DEMO_IDS.viewer, clientId: hierarchy.client.id },
+      ]),
     ]) {
       const row = {
         ...membership,
         organizationId: DEMO_IDS.organization,
-        clientId: DEMO_IDS.client,
+        clientId: 'clientId' in membership ? membership.clientId : DEMO_IDS.client,
         roleOverride: null,
         isDemo: true,
         createdAt: now,
@@ -631,6 +723,20 @@ export function seedDemoData(options: { reset?: boolean } = {}) {
       db.insert(monthlyPlans).values(plan).onConflictDoNothing().run();
       db.insert(contents).values(content).onConflictDoNothing().run();
     }
+    for (const [index, hierarchy] of additionalHierarchies.entries()) {
+      const additionalPlan = monthlyPlanSchema.parse({
+        id: demoUuid(0x120, index + 1), organizationId: DEMO_IDS.organization, accountId: hierarchy.account.id,
+        year: 2026, month: 9, primaryGoal: index === 0 ? 'conversion' : 'trust', plannedContentCount: 8,
+        campaignNotes: '仅供 ContentOS 本地联调的 Demo 月度计划。', keyProductsJson: [...hierarchy.products],
+        contentMixJson: index === 0 ? { product: 25, local: 25, conversion: 25, persona: 25 } : { education: 25, trust: 25, persona: 25, conversion: 25 },
+        status: 'active', createdBy: DEMO_IDS.owner, isDemo: true, createdAt: now, updatedAt: now,
+      });
+      if (options.reset) db.insert(monthlyPlans).values(additionalPlan).onConflictDoUpdate({
+        target: monthlyPlans.id, set: additionalPlan,
+        setWhere: and(eq(monthlyPlans.organizationId, DEMO_IDS.organization), eq(monthlyPlans.isDemo, true)),
+      }).run();
+      else db.insert(monthlyPlans).values(additionalPlan).onConflictDoNothing().run();
+    }
 
     const historicalContents = [
       {
@@ -704,6 +810,100 @@ export function seedDemoData(options: { reset?: boolean } = {}) {
         eq(contents.organizationId, DEMO_IDS.organization),
         eq(contents.isDemo, true),
       )).run();
+    }
+
+    const historyPatterns = [
+      { suffix: '同一主题A', contentType: 'product', contentGoal: 'trust', topic: '招牌产品怎么选', angle: '从专业人的日常选品标准切入', hookType: 'question', hook: '这一份好不好，先看这两处。', message: '用真实细节解释选品标准。' },
+      { suffix: '同一主题B', contentType: 'product', contentGoal: 'trust', topic: '招牌产品怎么选', angle: '从专业人的日常选品标准切入', hookType: 'question', hook: '这一份好不好，先看这两处。', message: '用真实细节解释选品标准。' },
+      { suffix: '同Topic不同Angle', contentType: 'education', contentGoal: 'trust', topic: '招牌产品怎么选', angle: '从第一次到店的顾客视角讲如何做决定', hookType: 'identity', hook: '第一次来的人，最容易忽略这一点。', message: '同一主题使用顾客视角提供新角度。' },
+      { suffix: '高播放人设', contentType: 'persona', contentGoal: 'exposure', topic: '专业人开门前的一天', angle: '跟拍开门前的真实准备', hookType: 'identity', hook: '你看到开门，我已经忙了两小时。', message: '用真实工作流程建立人设信任。' },
+      { suffix: '低播放高转化', contentType: 'conversion', contentGoal: 'gmv', topic: '团购适合哪类顾客', angle: '从人数和实际需求解释如何选择', hookType: 'result', hook: '别先看便宜，先看你们几个人。', message: '用适用条件帮助用户做理性团购决策。' },
+      { suffix: '表现较差环境', contentType: 'local', contentGoal: 'exposure', topic: '门店环境展示', angle: '纯环境空镜无人物叙事', hookType: 'local', hook: '带你看看今天的门店环境。', message: '展示门店空间与本地感。' },
+      { suffix: '顾客问答', contentType: 'customer_case', contentGoal: 'trust', topic: '顾客高频问题', angle: '用一问一答解释真实疑问', hookType: 'question', hook: '这个问题，几乎每天都有人问。', message: '直面疑问并给出克制答复。' },
+      { suffix: '制作流程', contentType: 'process', contentGoal: 'trust', topic: '一份服务如何完成', angle: '从准备到交付拆解流程', hookType: 'secret', hook: '看起来简单，后面其实有四道准备。', message: '透明展示流程和质量控制。' },
+      { suffix: '本地习惯', contentType: 'local', contentGoal: 'exposure', topic: '菏泽本地用户习惯', angle: '从本地口头语和生活节奏切入', hookType: 'local', hook: '菏泽人遇到这件事，第一反应都很像。', message: '用可核实的本地场景增加亲近感。' },
+      { suffix: '常见误区', contentType: 'education', contentGoal: 'followers', topic: '用户常见误区', angle: '对比错误做法与正确做法', hookType: 'mistake', hook: '这个小错误，可能让整个体验变差。', message: '给出可执行的纠错方法。' },
+    ] as const;
+    for (const [accountIndex, hierarchy] of allDemoHierarchies.entries()) {
+      for (let index = 0; index < 20; index += 1) {
+        const pattern = historyPatterns[index % historyPatterns.length];
+        const day = String(index + 1).padStart(2, '0');
+        const publishedAt = `2026-08-${day}T04:00:00.000Z`;
+        const editVersionId = demoUuid(0x205 + accountIndex, index + 1);
+        const historyRow = contentSchema.parse({
+          ...content, id: demoUuid(0x200 + accountIndex, index + 1), clientId: hierarchy.client.id,
+          brandId: hierarchy.brand.id, storeId: hierarchy.store.id, accountId: hierarchy.account.id, monthlyPlanId: null,
+          title: `${hierarchy.account.accountName}·${pattern.suffix}${Math.floor(index / historyPatterns.length) + 1}`,
+          contentType: pattern.contentType, contentGoal: pattern.contentGoal, topic: `${pattern.topic}·${hierarchy.product}`,
+          angle: `${pattern.angle}，场景为${hierarchy.localScene}`, hookType: pattern.hookType, hookText: pattern.hook,
+          coreMessage: `${pattern.message}本条只使用已确认的${hierarchy.product}信息。`, productText: hierarchy.product,
+          ctaType: pattern.contentGoal === 'gmv' ? '查看适用团购' : '关注后续真实记录', localElement: hierarchy.localScene,
+          peopleJson: [hierarchy.persona], status: 'PUBLISHED', priority: 'normal', operatorId: DEMO_IDS.operator,
+          plannedPublishDate: publishedAt, publishedAt, deadline: null,
+          externalId: `demo-${hierarchy.slug}-${index + 1}`,
+          importDedupKey: externalDedupKey(`demo-${hierarchy.slug}-${index + 1}`), importBatchId: null,
+          currentScriptVersionId: null, activeApprovedScriptVersionId: null, editorId: DEMO_IDS.editor,
+          currentEditVersionId: editVersionId, activeApprovedEditVersionId: editVersionId, aiReviewStatus: null,
+          createdBy: DEMO_IDS.owner, isDemo: true, createdAt: publishedAt, updatedAt: now,
+        });
+        if (options.reset) db.insert(contents).values(historyRow).onConflictDoUpdate({
+          target: contents.id, set: historyRow,
+          setWhere: and(eq(contents.organizationId, DEMO_IDS.organization), eq(contents.isDemo, true)),
+        }).run();
+        else db.insert(contents).values(historyRow).onConflictDoNothing().run();
+
+        db.insert(editVersions).values({
+          id: editVersionId, organizationId: DEMO_IDS.organization, contentId: historyRow.id, versionNo: 1,
+          assetUrl: `demo-assets/${hierarchy.slug}/history-${index + 1}.mp4`, assetType: 'local_reference',
+          note: '仅供 ContentOS 联调的 Demo 成片引用', createdBy: DEMO_IDS.editor, isDemo: true, createdAt: publishedAt,
+        }).onConflictDoNothing().run();
+
+        const publishId = demoUuid(0x210 + accountIndex, index + 1);
+        const existingPublish = db.select({ id: publishes.id }).from(publishes).where(and(
+          eq(publishes.organizationId, DEMO_IDS.organization), eq(publishes.id, publishId),
+        )).get();
+        if (!existingPublish) {
+          db.update(contents).set({ status: 'READY_TO_PUBLISH', publishedAt: null, updatedAt: now }).where(and(
+            eq(contents.organizationId, DEMO_IDS.organization), eq(contents.id, historyRow.id),
+          )).run();
+          db.insert(publishes).values({
+            id: publishId, organizationId: DEMO_IDS.organization, contentId: historyRow.id, platform: 'douyin',
+            publishedAt, postUrl: `https://www.douyin.com/video/demo-${hierarchy.slug}-${index + 1}`,
+            platformPostId: `demo-${hierarchy.slug}-${index + 1}`, status: 'active', createdBy: DEMO_IDS.owner,
+            isDemo: true, createdAt: publishedAt,
+          }).run();
+          db.update(contents).set({ status: 'PUBLISHED', publishedAt, updatedAt: now }).where(and(
+            eq(contents.organizationId, DEMO_IDS.organization), eq(contents.id, historyRow.id),
+          )).run();
+        }
+        const finalViews = index === 3 ? 60_000 : index === 4 ? 1_500 : index === 5 ? 600 : 4_000 + index * 650;
+        const finalClicks = index === 4 ? 220 : Math.floor(finalViews * 0.025);
+        const finalOrders = index === 4 ? 44 : Math.floor(finalClicks * 0.12);
+        const finalGmv = index === 4 ? 5_200 : finalOrders * 96;
+        for (const [snapshotIndex, ratio] of [0.45, 1].entries()) {
+          const views = Math.floor(finalViews * ratio);
+          db.insert(performanceSnapshots).values({
+            id: demoUuid(0x230 + accountIndex * 2 + snapshotIndex, index + 1), organizationId: DEMO_IDS.organization,
+            publishId, snapshotTime: `2026-08-${day}T${snapshotIndex === 0 ? '12' : '20'}:00:00.000Z`,
+            views, likes: Math.floor(views * (index === 5 ? 0.006 : 0.045)), comments: Math.floor(views * 0.006),
+            shares: Math.floor(views * 0.004), favorites: Math.floor(views * 0.008), profileVisits: Math.floor(views * 0.018),
+            groupbuyClicks: Math.floor(finalClicks * ratio), orders: Math.floor(finalOrders * ratio), gmv: Math.round(finalGmv * ratio * 100) / 100,
+            isDemo: true, createdAt: `2026-08-${day}T${snapshotIndex === 0 ? '12' : '20'}:01:00.000Z`,
+          }).onConflictDoNothing().run();
+        }
+        const sourceHash = contentSourceHash(historyRow);
+        db.insert(contentEmbeddings).values({
+          id: demoUuid(0x250 + accountIndex, index + 1), organizationId: DEMO_IDS.organization,
+          accountId: hierarchy.account.id, contentId: historyRow.id, embeddingModel: 'fallback:zh-bigram-v1',
+          sourceHash, vectorJson: weightedTermVector([
+            historyRow.title, historyRow.topic, historyRow.angle, historyRow.hookText, historyRow.coreMessage,
+          ].join('\n')), status: 'active', isDemo: true, createdAt: now, updatedAt: now,
+        }).onConflictDoUpdate({ target: contentEmbeddings.id, set: {
+          embeddingModel: 'fallback:zh-bigram-v1', sourceHash,
+          vectorJson: weightedTermVector([historyRow.title, historyRow.topic, historyRow.angle, historyRow.hookText, historyRow.coreMessage].join('\n')),
+          status: 'active', updatedAt: now,
+        } }).run();
+      }
     }
 
     const scheduledContent = contentSchema.parse({
@@ -948,6 +1148,69 @@ export function seedDemoData(options: { reset?: boolean } = {}) {
         createdAt: now,
       })).onConflictDoNothing().run();
     }
+
+    for (const [hierarchyIndex, hierarchy] of additionalHierarchies.entries()) {
+      for (const [memoryIndex, memory] of [
+        { scopeType: 'brand' as const, scopeId: hierarchy.brand.id, memoryKey: 'brand.positioning', memoryType: 'brand' as const,
+          valueJson: hierarchy.brand.brandPositioning, summary: `品牌定位：${hierarchy.brand.brandPositioning}`, importance: 5, sourceId: hierarchy.brand.id },
+        { scopeType: 'brand' as const, scopeId: hierarchy.brand.id, memoryKey: 'brand.core_products', memoryType: 'brand' as const,
+          valueJson: hierarchy.brand.coreProductsJson, summary: `核心产品：${hierarchy.brand.coreProductsJson.join('、')}`, importance: 5, sourceId: hierarchy.brand.id },
+        { scopeType: 'brand' as const, scopeId: hierarchy.brand.id, memoryKey: 'brand.core_selling_points', memoryType: 'brand' as const,
+          valueJson: hierarchy.brand.coreSellingPointsJson, summary: `核心卖点：${hierarchy.brand.coreSellingPointsJson.join('、')}`, importance: 5, sourceId: hierarchy.brand.id },
+        { scopeType: 'account' as const, scopeId: hierarchy.account.id, memoryKey: 'account.goals', memoryType: 'preference' as const,
+          valueJson: hierarchy.account.accountGoalJson, summary: `账号目标：${hierarchy.account.accountGoalJson.join('、')}`, importance: 4, sourceId: hierarchy.account.id },
+        { scopeType: 'account' as const, scopeId: hierarchy.account.id, memoryKey: 'account.content_style', memoryType: 'preference' as const,
+          valueJson: hierarchy.account.contentStyleJson, summary: `内容风格：${hierarchy.account.contentStyleJson.join('、')}`, importance: 4, sourceId: hierarchy.account.id },
+        { scopeType: 'account' as const, scopeId: hierarchy.account.id, memoryKey: 'account.forbidden_style', memoryType: 'preference' as const,
+          valueJson: hierarchy.account.forbiddenStyleJson, summary: `禁用风格：${hierarchy.account.forbiddenStyleJson.join('、')}`, importance: 5, sourceId: hierarchy.account.id },
+      ].entries()) {
+        db.insert(memories).values(memorySchema.parse({
+          ...memory, id: demoUuid(0x270 + hierarchyIndex, memoryIndex + 1), organizationId: DEMO_IDS.organization,
+          confidence: 1, sourceType: 'brand_profile', effectiveAt: now, expiresAt: null, status: 'active',
+          supersedesMemoryId: null, createdBy: DEMO_IDS.owner, isDemo: true, createdAt: now,
+        })).onConflictDoNothing().run();
+      }
+    }
+
+    const lifecycleMemories = [
+      {
+        id: DEMO_IDS.supersededGroupbuyPriceMemory, memoryKey: 'campaign.groupbuy_price', memoryType: 'temporary' as const,
+        valueJson: { price: 99, currency: 'CNY', demo_only: true }, summary: '旧团购价99元（已替代的Demo信息）',
+        importance: 5, confidence: 1, sourceType: 'manual' as const, sourceId: DEMO_IDS.account,
+        effectiveAt: '2026-07-01T00:00:00.000Z', status: 'superseded' as const, supersedesMemoryId: null,
+      },
+      {
+        id: DEMO_IDS.activeGroupbuyPriceMemory, memoryKey: 'campaign.groupbuy_price', memoryType: 'temporary' as const,
+        valueJson: { price: 88, currency: 'CNY', demo_only: true }, summary: '当前团购价88元（仅供Demo流程验证）',
+        importance: 5, confidence: 1, sourceType: 'manual' as const, sourceId: DEMO_IDS.account,
+        effectiveAt: '2026-09-01T00:00:00.000Z', status: 'active' as const,
+        supersedesMemoryId: DEMO_IDS.supersededGroupbuyPriceMemory,
+      },
+      {
+        id: DEMO_IDS.confirmedPreferenceMemory, memoryKey: 'preference.presentation', memoryType: 'preference' as const,
+        valueJson: ['保留现场口语', '先讲真实细节'], summary: '已确认Demo偏好：保留现场口语，先讲真实细节',
+        importance: 4, confidence: 1, sourceType: 'confirmed_preference' as const, sourceId: DEMO_IDS.account,
+        effectiveAt: '2026-08-01T00:00:00.000Z', status: 'active' as const, supersedesMemoryId: null,
+      },
+      {
+        id: DEMO_IDS.confirmedPerformanceMemory, memoryKey: 'performance.persona_opening', memoryType: 'performance_pattern' as const,
+        valueJson: { observation: '人设开门准备类内容播放高', sample_scope: 'demo' },
+        summary: '已确认Demo表现规律：真实开门准备人设内容更容易获得播放',
+        importance: 4, confidence: 0.8, sourceType: 'confirmed_performance' as const, sourceId: demoUuid(0x200, 4),
+        effectiveAt: '2026-09-01T00:00:00.000Z', status: 'active' as const, supersedesMemoryId: null,
+      },
+      {
+        id: DEMO_IDS.confirmedStrategyMemory, memoryKey: 'strategy.next_period', memoryType: 'strategy' as const,
+        valueJson: { keep: ['老板人设', '食材细节'], test: ['顾客视角'], demo_only: true },
+        summary: '已确认Demo策略：保留老板人设和食材细节，测试顾客视角',
+        importance: 5, confidence: 0.85, sourceType: 'confirmed_strategy' as const, sourceId: DEMO_IDS.monthlyPlan,
+        effectiveAt: '2026-09-01T00:00:00.000Z', status: 'active' as const, supersedesMemoryId: null,
+      },
+    ];
+    for (const memory of lifecycleMemories) db.insert(memories).values(memorySchema.parse({
+      ...memory, organizationId: DEMO_IDS.organization, scopeType: 'account', scopeId: DEMO_IDS.account,
+      expiresAt: null, createdBy: DEMO_IDS.owner, isDemo: true, createdAt: now,
+    })).onConflictDoNothing().run();
 
     if (options.reset) {
       db.insert(auditLogs).values({
