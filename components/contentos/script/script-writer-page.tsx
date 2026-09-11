@@ -123,10 +123,12 @@ export function ScriptWriterPage() {
     if (!session || !selected || locked.current) return;
     locked.current = true; setPending('saving'); setError(null); setNotice('');
     try {
-      await writeSelectedScript(fetchData, session.id, selected, (saved, id) => {
+      const result = await writeSelectedScript(fetchData, session.id, selected, (saved, id) => {
         setContentId(id); setSession(saved); setPending('script');
       });
-      setNotice('脚本已保存。可以直接阅读、复制口播，或修改后提交审核。');
+      setNotice(result.fallbackUsed
+        ? '百炼暂时无法连接，本次脚本已使用本地安全模式生成并保存。你可以直接修改或提交审核。'
+        : '脚本已保存。可以直接阅读、复制口播，或修改后提交审核。');
       setRevision((value) => value + 1); page.reload();
     } catch (reason) { setError(reason instanceof Error ? reason : new Error('脚本生成失败')); }
     finally { locked.current = false; setPending(''); }
@@ -155,6 +157,7 @@ export function ScriptWriterPage() {
     <Stepper step={step} />
     {error && <div role="alert" className="space-y-3 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800"><p>{error instanceof z.ZodError ? '返回结果格式异常，请重试。' : error.message}</p>{contentId && <p>选题已保存，重试只生成脚本，不会再次保存选题。已完成的选题策划费用保留，失败的脚本不扣积分。</p>}{error instanceof RequestError && error.code === 'ACTIVE_MEMORY_REQUIRED' && <Button variant="outline" disabled={Boolean(pending)} onClick={() => void initializeMemory()}>确认已有品牌资料并初始化记忆</Button>}{!contentId && <Button variant="outline" onClick={() => { setError(null); if (sessionParam && !session) window.location.assign('/scripts/new'); }}>继续选择</Button>}</div>}
     {notice && <output className="block rounded-md border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">{notice}</output>}
+    {session?.run.fallbackUsed && !contentId && <output className="block rounded-md border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">百炼暂时无法连接，本次已使用本地安全模式生成选题。选题仍可继续选择和生成脚本；连接恢复后会自动使用千问。</output>}
     {pending && <output aria-live="polite" className="flex items-center gap-3 rounded-md border border-[#c9e3ec] bg-[#e7f3f8] p-5"><LoaderCircle className="size-5 shrink-0 animate-spin text-[#0b6e99]" /><span><span className="block font-medium text-[#37352f]">{pending === 'topics' ? '正在为你想选题，并检查历史重复…' : pending === 'saving' ? '正在保存你选中的选题…' : pending === 'script' ? '正在写口播和分镜…' : pending === 'memory' ? '正在确认品牌资料…' : '正在换角度，并重新检查重复…'}</span><span className="mt-1 block text-sm text-[#5f5e5a]">这可能需要一点时间，请保持页面打开。</span></span></output>}
     {!session && !contentId && <section className="surface-card space-y-6 sm:!p-7">
       {!writableAccounts.length ? <EmptyData title="还没有可写脚本的账号" description="先添加一个品牌账号；已有账号请联系负责人分配客户。"><Button nativeButton={false} render={<Link href="/accounts" />}>查看品牌与账号</Button></EmptyData> : <>
@@ -166,7 +169,7 @@ export function ScriptWriterPage() {
         </RadioGroup></fieldset>
         <fieldset disabled={Boolean(pending)}><AccountContext key={selectedAccountId} accountId={selectedAccountId} product={product} onProduct={setProduct} /></fieldset>
         <details className="rounded-md border border-[#e9e9e7] p-4"><summary className="cursor-pointer text-sm text-[#787774]">还有特别想说的？（选填）</summary><Textarea aria-label="补充想法" value={extra} disabled={Boolean(pending)} onChange={(event) => setExtra(event.target.value)} maxLength={1500} className="mt-3" placeholder="例如：这次想讲老板为什么坚持手切。留空也可以。" /></details>
-        <div className="flex flex-wrap items-center justify-between gap-4 border-t pt-5"><p className="max-w-xl text-sm leading-6 text-slate-500">先给你 3 个选题，选中后再写脚本。{estimate === null ? '生成能力暂未配置，请联系负责人。' : `选题保存 ${page.data.plannerPointCost} 积分 + 脚本生成 ${page.data.scriptPointCost} 积分，各自成功后计费。`}{estimate !== null && page.data.remainingPoints < estimate && ' 当前积分不足，请联系负责人。'}</p><Button className="h-12 px-6 text-base" disabled={!canGenerate || Boolean(pending)} onClick={() => void generateTopics()}><Sparkles />帮我想 3 个选题<ArrowRight /></Button></div>
+        <div className="flex flex-wrap items-center justify-between gap-4 border-t pt-5"><p className="max-w-xl text-sm leading-6 text-slate-500">先给你 3 个选题，选中后再写脚本。{estimate === null ? '生成能力暂未配置，请联系负责人。' : `选题保存 ${page.data.plannerPointCost} 积分 + 脚本生成 ${page.data.scriptPointCost} 积分，各自成功后计费。`}{estimate !== null && page.data.remainingPoints < estimate && ' 当前积分不足，请联系负责人。'}</p><Button className="h-12 min-w-48 px-6 text-base" disabled={!canGenerate || Boolean(pending)} onClick={() => void generateTopics()}>{pending === 'topics' ? <><LoaderCircle className="animate-spin" />正在生成选题…</> : <><Sparkles />帮我想 3 个选题<ArrowRight /></>}</Button></div>
       </>}
     </section>}
     {session && !contentId && <section className="space-y-4">

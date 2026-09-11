@@ -203,7 +203,10 @@ export const plannerSessionViewSchema = z.object({
   status: z.enum(['generating', 'awaiting_selection', 'completed', 'failed']), plannerSkillVersion: z.number().int().positive(),
   plannerPointCost: z.number().int().nonnegative(), selectedCount: z.number().int().nonnegative(), completedAt: timestamp.nullable(),
   createdAt: timestamp, updatedAt: timestamp, candidates: z.array(plannerCandidateViewSchema), gaps: z.array(plannerGapSchema),
-  run: z.object({ status: z.enum(['queued', 'running', 'completed', 'completed_with_warnings', 'manual_review_required', 'failed', 'cancelled']) }),
+  run: z.object({
+    status: z.enum(['queued', 'running', 'completed', 'completed_with_warnings', 'manual_review_required', 'failed', 'cancelled']),
+    fallbackUsed: z.boolean(),
+  }),
 });
 
 export const persistPlannerSelectionSchema = z.object({ candidateIds: z.array(uuid).min(1).max(20) }).strict()

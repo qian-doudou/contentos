@@ -93,15 +93,15 @@ function mockScript(
   return scriptJsonSchema.parse({
     title: content.title,
     hook,
-    spoken_script: `${hook}\n我是店里的老板。今天不讲夸张噱头，就从真实现场带你看看${content.topic || content.title}。${content.coreMessage || `我们会把${product}的关键细节讲清楚。`}到店时可以按自己的需求选择，具体信息以门店当期公示为准。`,
+    spoken_script: `${hook}\n我是这家店的负责人。今天不讲夸张噱头，就从真实现场带你看看${content.topic || content.title}。${content.coreMessage || `我们会把${product}的关键细节讲清楚。`}到店时可以按自己的需求选择，具体信息以门店当期公示为准。`,
     shots: [
-      { scene: '门店开场', visual: '老板在真实门店环境出镜', spoken_line: hook },
-      { scene: '核心展示', visual: `近景展示${product}与制作过程`, spoken_line: content.coreMessage || `把${product}的真实细节展示清楚。` },
-      { scene: '结尾行动', visual: '老板面向镜头自然收尾', spoken_line: content.ctaType || '欢迎到店按实际需求了解。' },
+      { scene: '门店开场', visual: '门店负责人在真实工作环境出镜', spoken_line: hook },
+      { scene: '核心展示', visual: `近景展示${product}相关细节与服务过程`, spoken_line: content.coreMessage || `把${product}的真实细节展示清楚。` },
+      { scene: '结尾行动', visual: '门店负责人面向镜头自然收尾', spoken_line: content.ctaType || '欢迎到店按实际需求了解。' },
     ],
     product_integration: content.productText,
     cta: content.ctaType || '欢迎到店了解，具体信息以门店当期公示为准。',
-    hashtags: [...new Set([brand.city ? `#${brand.city}美食` : '#本地生活', `#${brand.brandName}`, '#真实探店'])],
+    hashtags: [...new Set([brand.city ? `#${brand.city}本地生活` : '#本地生活', `#${brand.brandName}`, '#真实服务'])],
   });
 }
 
@@ -495,9 +495,10 @@ export function scriptApprovalService(
           clientId: row.clientId, input: generatorInput, outputSchema: scriptJsonSchema,
           mockOutput: mockScript(row, brand),
         });
+        const generatorFallback = generated.mode === 'mock' && ai.publicConfig.mode === 'live';
         finishStep(generatorStep.id, generatorStarted, {
           rawOutput: generated.rawOutput, parsed: generated.output, schemaValid: true, mode: generated.mode,
-        });
+        }, generatorFallback ? ['LLM_PROVIDER_FALLBACK'] : []);
 
         const deterministic = deterministicQuality(
           row.id,
@@ -541,6 +542,7 @@ export function scriptApprovalService(
           },
         });
         const aiQuality = checked.output.candidates[0];
+        const qualityFallback = checked.mode === 'mock' && ai.publicConfig.mode === 'live';
         const qualityIssues = [
           ...deterministic.issues,
           ...aiQuality.issues.filter((issue) => !deterministic.issues.some((item) => item.code === issue.code && item.message === issue.message)),
@@ -548,8 +550,15 @@ export function scriptApprovalService(
         const qualityStatus = qualityIssues.some((issue) => issue.blocking) || aiQuality.status === 'blocked'
           ? 'blocked' as const
           : qualityIssues.length || aiQuality.status === 'warning' ? 'warning' as const : 'passed' as const;
-        const warnings = qualityStatus === 'passed' ? [] : ['SCRIPT_QUALITY_ISSUES'];
-        finishStep(qualityStep.id, qualityStarted, { status: qualityStatus, issues: qualityIssues }, warnings);
+        const qualityWarnings = [
+          ...(qualityStatus === 'passed' ? [] : ['SCRIPT_QUALITY_ISSUES']),
+          ...(qualityFallback ? ['LLM_PROVIDER_FALLBACK'] : []),
+        ];
+        const runWarnings = [
+          ...(generatorFallback ? ['LLM_PROVIDER_FALLBACK'] : []),
+          ...qualityWarnings,
+        ];
+        finishStep(qualityStep.id, qualityStarted, { status: qualityStatus, issues: qualityIssues, mode: checked.mode }, qualityWarnings);
         if (qualityStatus === 'blocked')
           throw new ApiError(422, 'SCRIPT_QUALITY_BLOCKED', '脚本未通过质量门禁，未写入版本库', qualityIssues);
 
@@ -599,7 +608,7 @@ export function scriptApprovalService(
             finishedAt: at, durationMs: elapsed(new Date(persistStartedAt).getTime(), now().getTime()),
           }).where(and(eq(tables.runSteps.organizationId, organizationId), eq(tables.runSteps.id, persistStep.id))).run();
           db.update(tables.runs).set({
-            status: warnings.length ? 'completed_with_warnings' : 'completed', finishedAt: at,
+            status: runWarnings.length ? 'completed_with_warnings' : 'completed', finishedAt: at,
           }).where(and(eq(tables.runs.organizationId, organizationId), eq(tables.runs.id, runId))).run();
           db.update(tables.contents).set({ aiReviewStatus: qualityStatus, updatedAt: at }).where(and(
             eq(tables.contents.organizationId, organizationId), eq(tables.contents.id, row.id),
@@ -614,6 +623,7 @@ export function scriptApprovalService(
         return generateScriptResultSchema.parse({
           workspace: workspace(row.id), runId, contextSnapshotId: context.snapshotId,
           billedPoints: generatorSkill.pointCost, qualityStatus, qualityIssues,
+          fallbackUsed: generatorFallback || qualityFallback,
         });
       } catch (error) {
         const runStatus = db.select({ status: tables.runs.status }).from(tables.runs).where(and(

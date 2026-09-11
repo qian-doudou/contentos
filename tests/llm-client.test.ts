@@ -147,6 +147,38 @@ describe('OpenAI-compatible LLM client', () => {
     expect(unavailable).toHaveBeenCalledTimes(2);
   });
 
+  it('uses the supplied deterministic fallback after a transient live-provider failure', async () => {
+    const unavailable = vi
+      .fn<typeof fetch>()
+      .mockRejectedValue(new TypeError('fetch failed'));
+    const client = new OpenAICompatibleClient(
+      getLlmConfig({ LLM_API_KEY: 'test-key' }),
+      { fetch: unavailable },
+    );
+    await expect(client.complete({
+      messages: [{ role: 'user', content: '生成可继续使用的选题' }],
+      mockText: '{"items":[]}',
+    })).resolves.toMatchObject({
+      text: '{"items":[]}',
+      mode: 'mock',
+      model: 'mock-fallback:qwen3.7-plus',
+      attempts: 2,
+      inputTokens: null,
+      outputTokens: null,
+    });
+    expect(unavailable).toHaveBeenCalledTimes(2);
+
+    await expect(client.complete({
+      messages: [{ role: 'user', content: '继续执行质量检查' }],
+      mockText: '{"status":"passed"}',
+    })).resolves.toMatchObject({
+      text: '{"status":"passed"}',
+      mode: 'mock',
+      attempts: 1,
+    });
+    expect(unavailable).toHaveBeenCalledTimes(2);
+  });
+
   it('uses one JSON parser for plain and fenced model output', () => {
     expect(parseJsonOutput('{"ok":true}')).toEqual({ ok: true });
     expect(parseJsonOutput('```json\n{"ok":true}\n```')).toEqual({ ok: true });

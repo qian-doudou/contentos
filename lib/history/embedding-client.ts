@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { embeddingVectorSchema, type EmbeddingVector } from './contracts';
+import type { EmbeddingVector } from './contracts';
 import { weightedTermVector } from './similarity';
 
 const defaults = {
@@ -65,6 +65,8 @@ export type EmbeddingResult = {
 class NonRetryableEmbeddingError extends Error {}
 
 export class OpenAICompatibleEmbeddingClient {
+  private providerUnavailableUntil = 0;
+
   constructor(
     private readonly config: EmbeddingConfig = getEmbeddingConfig(),
     private readonly runtime: { fetch?: typeof fetch } = {},
@@ -84,6 +86,10 @@ export class OpenAICompatibleEmbeddingClient {
   }
 
   async embed(texts: string[]): Promise<EmbeddingResult> {
+    const fallback = (attempts = 1): EmbeddingResult => ({
+      ...deterministicFallbackEmbeddings(texts),
+      attempts,
+    });
     if (texts.length === 0)
       return {
         vectors: [],
@@ -92,14 +98,9 @@ export class OpenAICompatibleEmbeddingClient {
         attempts: 1,
       };
     if (this.config.mode === 'fallback')
-      return {
-        vectors: texts.map((text) =>
-          embeddingVectorSchema.parse(weightedTermVector(text)),
-        ),
-        model: this.config.model,
-        method: 'fallback_bigram',
-        attempts: 1,
-      };
+      return fallback();
+
+    if (this.providerUnavailableUntil > Date.now()) return fallback();
 
     const fetchImplementation = this.runtime.fetch ?? fetch;
     let lastError: unknown;
@@ -123,12 +124,14 @@ export class OpenAICompatibleEmbeddingClient {
           const error = new Error(
             `Embedding request failed with HTTP ${response.status}`,
           );
-          if (
-            attempt < 2 &&
-            (response.status === 429 || response.status >= 500)
-          ) {
+          const transient = response.status === 429 || response.status >= 500;
+          if (attempt < 2 && transient) {
             lastError = error;
             continue;
+          }
+          if (transient) {
+            this.providerUnavailableUntil = Date.now() + 60_000;
+            return fallback(attempt);
           }
           throw new NonRetryableEmbeddingError(error.message);
         }
@@ -148,7 +151,10 @@ export class OpenAICompatibleEmbeddingClient {
       } catch (error) {
         lastError = error;
         if (error instanceof NonRetryableEmbeddingError) throw error;
-        if (attempt >= 2) throw error;
+        if (attempt >= 2) {
+          this.providerUnavailableUntil = Date.now() + 60_000;
+          return fallback(attempt);
+        }
       } finally {
         clearTimeout(timer);
       }

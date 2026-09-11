@@ -65,11 +65,11 @@ function mockPlanner(input: PlannerInput, context: ContextBuildResult, count = i
     : [];
   const positioning = typeof stable.get('brand.positioning') === 'string' ? stable.get('brand.positioning') as string : context.account.brandName;
   const patterns = [
-    { type: 'persona' as const, hook: 'identity' as const, title: '老板的一天从选食材开始', topic: '老板日常与选品标准', angle: '跟拍老板开店前的真实准备过程' },
+    { type: 'persona' as const, hook: 'identity' as const, title: '门店负责人开始一天工作前先做什么', topic: '负责人日常与服务标准', angle: '跟拍负责人开始一天工作前的真实准备过程' },
     { type: 'product' as const, hook: 'question' as const, title: `一份${products[0] ?? '招牌产品'}好不好，看这几个细节`, topic: '核心产品判断方法', angle: '用可观察的产品细节建立信任' },
     { type: 'local' as const, hook: 'local' as const, title: `本地人熟悉的${products[1] ?? '到店体验'}`, topic: '本地消费习惯', angle: '从本地顾客的真实选择切入' },
     { type: 'conversion' as const, hook: 'mistake' as const, title: '第一次到店怎么选更合适', topic: '到店决策指南', angle: '按人数与需求给出不夸张的选择建议' },
-    { type: 'process' as const, hook: 'secret' as const, title: '后厨里最不能省的一道流程', topic: '门店标准流程', angle: '展示容易被忽略的真实操作环节' },
+    { type: 'process' as const, hook: 'secret' as const, title: '服务中最不能省的一道流程', topic: '门店标准流程', angle: '展示容易被忽略的真实操作环节' },
     { type: 'trust' as const, hook: 'result' as const, title: '顾客愿意再来的原因藏在细节里', topic: '真实服务细节', angle: '从一次完整到店体验建立信任' },
   ];
   return plannerOutputSchema.parse({
@@ -77,11 +77,16 @@ function mockPlanner(input: PlannerInput, context: ContextBuildResult, count = i
     items: Array.from({ length: count }, (_, index) => {
       const pattern = patterns[index % patterns.length];
       const suffix = index >= patterns.length ? `（${Math.floor(index / patterns.length) + 1}）` : '';
+      const focusProduct = pattern.type === 'product'
+        ? products[0]
+        : pattern.type === 'local'
+          ? products[1] ?? products[0]
+          : products[index % Math.max(products.length, 1)];
       return {
         title: `${pattern.title}${suffix}`, content_type: pattern.type, content_goal: input.primaryGoal,
         topic: pattern.topic, angle: pattern.angle, hook_type: pattern.hook,
         hook_idea: index === 0 ? '你看到的是开门营业，老板先做的其实是这一件事。' : `别急着下结论，先看第 ${index + 1} 个真实细节。`,
-        core_message: `用真实现场呈现${products[index % Math.max(products.length, 1)] ?? context.account.brandName}，不使用未经确认的价格或活动。`,
+        core_message: `用真实现场呈现${focusProduct ?? context.account.brandName}，不使用未经确认的价格或活动。`,
         recommended_reason: '匹配账号风格，并补充当前月度计划的结构化内容供给。',
       };
     }),
@@ -145,6 +150,19 @@ export function aiPlannerService(
       eq(tables.runs.organizationId, organizationId), eq(tables.runs.id, row.runId),
     )).get();
     if (!run) throw missing();
+    const plannerStepOutput = db.select({ outputJson: tables.runSteps.outputJson }).from(tables.runSteps).where(and(
+      eq(tables.runSteps.organizationId, organizationId), eq(tables.runSteps.runId, row.runId),
+      eq(tables.runSteps.stepCode, 'content_planner'),
+    )).get()?.outputJson;
+    let fallbackUsed = false;
+    if (plannerStepOutput) {
+      try {
+        const parsed = JSON.parse(plannerStepOutput) as { mode?: unknown };
+        fallbackUsed = parsed.mode === 'mock';
+      } catch {
+        fallbackUsed = false;
+      }
+    }
     const candidates = db.select().from(tables.plannerCandidates).where(and(
       eq(tables.plannerCandidates.organizationId, organizationId),
       eq(tables.plannerCandidates.plannerSessionId, row.id),
@@ -170,7 +188,7 @@ export function aiPlannerService(
       candidates, gaps: gaps(row.monthlyPlanId ? db.select().from(tables.monthlyPlans).where(and(
         eq(tables.monthlyPlans.organizationId, organizationId), eq(tables.monthlyPlans.accountId, row.accountId),
         eq(tables.monthlyPlans.id, row.monthlyPlanId),
-      )).get() ?? null : null), run,
+      )).get() ?? null : null), run: { ...run, fallbackUsed },
     });
   };
 
@@ -420,7 +438,13 @@ export function aiPlannerService(
               throw new ApiError(502, 'PLANNER_COUNT_MISMATCH', `Planner 应返回 ${value.plannedCount} 条候选`);
           },
         });
-        finishStep(plannerStep.id, plannerStarted, { rawOutput: generated.rawOutput, parsed: generated.output, schemaValid: true, mode: generated.mode });
+        const providerFallback = generated.mode === 'mock' && ai.publicConfig.mode === 'live';
+        finishStep(
+          plannerStep.id,
+          plannerStarted,
+          { rawOutput: generated.rawOutput, parsed: generated.output, schemaValid: true, mode: generated.mode },
+          providerFallback ? ['LLM_PROVIDER_FALLBACK'] : [],
+        );
 
         activeStepId = step(tracking.runId, 'candidate_retrieval').id;
         const evaluated = await evaluateItems({ runId: tracking.runId, input: value, context, items: generated.output.items,

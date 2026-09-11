@@ -33,9 +33,9 @@ export async function writeSelectedScript(
   if (!contentId) throw new Error('未能读取已保存的选题，请刷新后重试。');
   onSaved(session, contentId);
   const workspace = await request(`/api/contents/${contentId}/scripts`, scriptWorkspaceSchema);
-  if (workspace.content.currentScriptVersionId) return workspace;
+  if (workspace.content.currentScriptVersionId) return Object.assign(workspace, { fallbackUsed: false });
   const result = await request(`/api/contents/${contentId}/scripts/generate`, generateScriptResultSchema, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}),
   });
-  return result.workspace;
+  return Object.assign(result.workspace, { fallbackUsed: result.fallbackUsed });
 }

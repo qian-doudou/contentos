@@ -72,6 +72,9 @@ export type LlmCompletion = {
   mode: 'mock' | 'live';
 };
 
+const providerCircuit = new Map<string, number>();
+const providerCircuitTtlMs = 60_000;
+
 export function getLlmConfig(
   env: Partial<NodeJS.ProcessEnv> = process.env,
 ): LlmConfig {
@@ -164,6 +167,24 @@ export class OpenAICompatibleClient {
     const clock = this.runtime.now ?? Date.now;
     const startedAt = clock();
 
+    const localFallback = (attempts: number): LlmCompletion => {
+      providerCircuit.set(this.config.baseUrl, clock() + providerCircuitTtlMs);
+      return {
+        text: input.mockText!,
+        providerRequestId: stableMockId({
+          fallbackFor: model,
+          messages: input.messages,
+          text: input.mockText,
+        }).replace('mock-', 'fallback-'),
+        model: `mock-fallback:${model}`,
+        inputTokens: null,
+        outputTokens: null,
+        durationMs: Math.max(0, clock() - startedAt),
+        attempts,
+        mode: 'mock',
+      };
+    };
+
     if (this.config.mode === 'mock') {
       return {
         text: input.mockText ?? '[MOCK] ContentOS deterministic response',
@@ -180,6 +201,14 @@ export class OpenAICompatibleClient {
         mode: 'mock',
       };
     }
+
+    // Once a provider transport failure has been confirmed, keep the rest of
+    // the current multi-step workflow usable instead of repeating the same
+    // timeout for planner, duplicate judge, quality checker, and script steps.
+    if (
+      input.mockText !== undefined &&
+      (providerCircuit.get(this.config.baseUrl) ?? 0) > clock()
+    ) return localFallback(1);
 
     const fetchImpl = this.runtime.fetch ?? fetch;
     let lastError: unknown;
@@ -208,13 +237,13 @@ export class OpenAICompatibleClient {
           const error = new Error(
             `LLM request failed with HTTP ${response.status}`,
           );
-          if (
-            attempt < 2 &&
-            (response.status === 429 || response.status >= 500)
-          ) {
+          const transient = response.status === 429 || response.status >= 500;
+          if (attempt < 2 && transient) {
             lastError = error;
             continue;
           }
+          if (transient && input.mockText !== undefined)
+            return localFallback(attempt);
           throw new LlmRequestError(error.message, attempt, { cause: error });
         }
         const payload = completionResponseSchema.parse(await response.json());
@@ -235,10 +264,12 @@ export class OpenAICompatibleClient {
       } catch (error) {
         lastError = error;
         if (error instanceof LlmRequestError) throw error;
-        if (attempt >= 2)
+        if (attempt >= 2) {
+          if (input.mockText !== undefined) return localFallback(attempt);
           throw new LlmRequestError(failureMessage(error), attempt, {
             cause: error,
           });
+        }
       } finally {
         clearTimeout(timer);
       }

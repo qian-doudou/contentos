@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as schema from '@/db/schema';
 import {
   accounts,
@@ -755,5 +755,24 @@ describe('OpenAI-compatible embedding client', () => {
       attempts: 2,
     });
     expect(calls).toBe(2);
+  });
+
+  it('falls back once and skips repeated provider timeouts in the same workflow', async () => {
+    const unavailable = vi.fn<typeof fetch>().mockRejectedValue(new TypeError('fetch failed'));
+    const client = new OpenAICompatibleEmbeddingClient(
+      {
+        mode: 'live',
+        baseUrl: 'https://unavailable.example.test/v1',
+        apiKey: 'test-only',
+        model: 'embedding-test',
+        timeoutMs: 1_000,
+      },
+      { fetch: unavailable },
+    );
+    const first = await client.embed(['第一条候选']);
+    const second = await client.embed(['第二条候选']);
+    expect(first).toMatchObject({ method: 'fallback_bigram', attempts: 2 });
+    expect(second).toMatchObject({ method: 'fallback_bigram', attempts: 1 });
+    expect(unavailable).toHaveBeenCalledTimes(2);
   });
 });

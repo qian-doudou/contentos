@@ -143,6 +143,7 @@ export const generateScriptResultSchema = z.object({
   runId: uuid,
   contextSnapshotId: uuid,
   billedPoints: z.number().int().nonnegative(),
+  fallbackUsed: z.boolean(),
   qualityStatus: z.enum(['passed', 'warning']),
   qualityIssues: z.array(z.object({
     code: z.string(), message: z.string(), field: z.string().nullable(), blocking: z.boolean(),

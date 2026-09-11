@@ -121,7 +121,10 @@ export function plannerAiRuntime(
       completion = await client.complete({
         tier: selectedSkill.modelProfile,
         messages: [{ role: 'system', content: rendered.system }, { role: 'user', content: rendered.user }],
-        mockText: client.mode === 'mock' ? JSON.stringify(args.mockOutput) : undefined,
+        // Keep a validated deterministic result available when the configured
+        // provider is temporarily unreachable. Permanent 4xx configuration
+        // errors still fail and are never hidden by this fallback.
+        mockText: JSON.stringify(args.mockOutput),
       });
       const rawParsed = parseJsonOutput(completion.text);
       const generic = zodFromJsonSchema(selectedSkill.outputSchemaJson).safeParse(rawParsed);
@@ -134,7 +137,7 @@ export function plannerAiRuntime(
         accountId: args.accountId, clientId: args.clientId, completion,
         status: 'completed', durationMs: completion.durationMs,
       });
-      return { output: parsed.data, rawOutput: completion.text, rendered, completion, usage, skill: selectedSkill, mode: client.mode };
+      return { output: parsed.data, rawOutput: completion.text, rendered, completion, usage, skill: selectedSkill, mode: completion.mode };
     } catch (error) {
       const durationMs = completion?.durationMs ?? Math.max(0, now().getTime() - started);
       persistUsage({

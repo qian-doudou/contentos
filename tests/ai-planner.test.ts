@@ -155,6 +155,13 @@ describe('AI Content Planner', () => {
     const result = await service().generate({ accountId: ids.account, plannedCount: 3, shootDate: null, primaryGoal: 'conversion', specialRequirements: null });
     expect(result).toMatchObject({ status: 'awaiting_selection', run: { status: 'manual_review_required' }, plannedCount: 3 });
     expect(result.candidates).toHaveLength(3);
+    expect(result.candidates).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        contentType: 'product',
+        title: expect.stringContaining('手切羊肉'),
+        coreMessage: expect.stringContaining('手切羊肉'),
+      }),
+    ]));
     expect(db.select().from(contents).all()).toHaveLength(before);
     expect(db.select().from(runSteps).where(eq(runSteps.runId, result.runId)).all().map((item) => [item.stepCode, item.status])).toEqual([
       ['context_build', 'succeeded'], ['content_planner', 'succeeded'], ['candidate_retrieval', 'succeeded'],
@@ -173,8 +180,8 @@ describe('AI Content Planner', () => {
   it('blocks high-duplicate selection and preserves candidates until explicit save', async () => {
     const before = db.select().from(contents).all().length;
     db.update(contents).set({
-      title: '老板的一天从选食材开始', topic: '老板日常与选品标准',
-      angle: '跟拍老板开店前的真实准备过程', hookText: '你看到的是开门营业，老板先做的其实是这一件事。',
+      title: '门店负责人开始一天工作前先做什么', topic: '负责人日常与服务标准',
+      angle: '跟拍负责人开始一天工作前的真实准备过程', hookText: '你看到的是开门营业，老板先做的其实是这一件事。',
       coreMessage: '用真实现场呈现手切羊肉，不使用未经确认的价格或活动。',
     }).where(eq(contents.id, ids.historical)).run();
     const result = await service().generate({ accountId: ids.account, plannedCount: 1, shootDate: null, primaryGoal: 'exposure', specialRequirements: null });
