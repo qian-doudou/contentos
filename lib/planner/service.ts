@@ -369,6 +369,8 @@ export function aiPlannerService(
       if (readable) predicates.push(readable.length ? inArray(tables.accounts.clientId, readable) : sql`0 = 1`);
       let plannerPointCost: number | null = null;
       try { plannerPointCost = ai.skill('content_planner').pointCost; } catch { plannerPointCost = null; }
+      let scriptPointCost: number | null = null;
+      try { scriptPointCost = ai.skill('script_generator').pointCost; } catch { scriptPointCost = null; }
       const quota = ai.activeQuota();
       const accounts = db.select({ id: tables.accounts.id, accountName: tables.accounts.accountName,
         clientId: tables.accounts.clientId, clientName: tables.clients.clientName })
@@ -383,7 +385,7 @@ export function aiPlannerService(
           };
         });
       return plannerPageDataSchema.parse({ accounts, remainingPoints: quota ? quota.quotaPoints - quota.usedPoints : 0,
-        plannerPointCost, mode: ai.publicConfig.mode, permissions: { canPlan: plannerPointCost !== null && permissions.has('ai.test') && accounts.some((item) => item.canWrite) } });
+        plannerPointCost, scriptPointCost, mode: ai.publicConfig.mode, permissions: { canPlan: plannerPointCost !== null && permissions.has('ai.test') && accounts.some((item) => item.canWrite) } });
     },
 
     detail(id: string) { return view(session(id)); },

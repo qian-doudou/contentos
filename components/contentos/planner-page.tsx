@@ -85,16 +85,18 @@ export function PlannerPage() {
   return (
     <div className="space-y-6">
       <header className="flex flex-wrap items-end justify-between gap-4">
-        <div><p className="eyebrow">AI 运营</p><h1 className="page-title">AI Content Planner</h1>
-          <p className="page-description">只填写本次任务，品牌定位、产品和账号风格由服务端 Context Builder 自动装配。</p></div>
+        <div><p className="eyebrow">AI 运营</p><h1 className="page-title">批量选题策划</h1>
+          <p className="page-description">一次安排多条内容。品牌定位、产品和账号风格自动带入。</p></div>
         <div className="flex gap-2"><Badge variant="outline">{page.data.mode === 'mock' ? '确定性 Mock' : '百炼实时模式'}</Badge>
           <Badge variant="secondary">余额 {page.data.remainingPoints} Points</Badge>
           <Button variant="outline" nativeButton={false} render={<Link href="/ops/runs" />}><History />Run Trace</Button></div>
       </header>
 
+      <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-cyan-200 bg-cyan-50 p-5"><div><p className="font-medium text-cyan-950">只想先写一条脚本？</p><p className="mt-1 text-sm text-cyan-800">用快捷模式：选账号 → 挑选题 → 直接生成口播和分镜。</p></div><Button nativeButton={false} render={<Link href={`/scripts/new${selectedAccountId ? `?accountId=${selectedAccountId}` : ''}`} />}><Sparkles />去写脚本</Button></div>
+
       <section className="grid gap-5 xl:grid-cols-[minmax(360px,0.72fr)_minmax(0,1.28fr)]">
         <form className="surface-card space-y-5" onSubmit={generate}>
-          <div><h2 className="text-lg font-semibold">本次策划请求</h2><p className="mt-1 text-sm text-slate-500">表单严格限定 5 个输入字段。</p></div>
+          <div><h2 className="text-lg font-semibold">安排本次选题</h2><p className="mt-1 text-sm text-slate-500">选账号和数量即可开始，拍摄日期与补充要求可留空。</p></div>
           {page.data.accounts.length ? <fieldset disabled={pending !== null || !page.data.permissions.canPlan} className="space-y-4">
             <label className="block space-y-1.5 text-sm" htmlFor="planner-account">抖音账号
               <NativeSelect id="planner-account" name="accountId" value={selectedAccountId} onChange={(event) => setAccountId(event.target.value)} className="w-full">
@@ -105,7 +107,7 @@ export function PlannerPage() {
               <label className="block space-y-1.5 text-sm" htmlFor="planner-date">拍摄日期（可选）<Input id="planner-date" name="shootDate" type="date" /></label>
             </div>
             <label className="block space-y-1.5 text-sm" htmlFor="planner-goal">本次首要目标
-              <NativeSelect id="planner-goal" name="primaryGoal" defaultValue={activeAccount?.currentPlan?.primaryGoal ?? 'exposure'} className="w-full">
+              <NativeSelect key={selectedAccountId} id="planner-goal" name="primaryGoal" defaultValue={activeAccount?.currentPlan?.primaryGoal ?? 'exposure'} className="w-full">
                 {contentGoals.map((goal) => <option key={goal} value={goal}>{contentGoalLabels[goal]}</option>)}
               </NativeSelect></label>
             <label className="block space-y-1.5 text-sm" htmlFor="planner-requirements">特殊要求（可选）
@@ -150,6 +152,7 @@ export function PlannerPage() {
             {candidate.similarContents.length > 0 && (candidate.duplicateLevel === 'remixable' || candidate.duplicateLevel === 'high') && <details className="rounded-xl border p-3 text-sm"><summary className="cursor-pointer font-medium">查看相似历史内容（{candidate.similarContents.length}）</summary><div className="mt-3 space-y-2">{candidate.similarContents.slice(0, 5).map((item) => <div className="rounded-lg bg-slate-50 p-3" key={item.contentId}><div className="flex justify-between gap-2"><span>{item.title}</span><span className="text-xs text-slate-400">规则 {Math.round(item.ruleScore.combined * 100)}%</span></div><p className="mt-1 text-xs text-slate-500">{item.angle}</p></div>)}</div></details>}
             {session.status === 'awaiting_selection' && <div className="flex flex-wrap gap-2 border-t pt-4"><Button variant="outline" size="sm" disabled={pending !== null} onClick={() => void reangle(candidate.id, candidate.alternativeAngles[0])}>{pending === candidate.id ? <LoaderCircle className="animate-spin" /> : <RefreshCw />}换角度并重新去重</Button>
               {candidate.duplicateLevel === 'high' && <span className="self-center text-xs text-rose-600">高度重复，默认不可勾选</span>}</div>}
+            {candidate.persistedContentId && <Button nativeButton={false} render={<Link href={`/scripts/new?contentId=${candidate.persistedContentId}`} />}><Sparkles />为这条选题写脚本</Button>}
           </article>;
         })}</div>
       </section>}

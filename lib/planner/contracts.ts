@@ -163,6 +163,7 @@ export const plannerPageDataSchema = z.object({
   accounts: z.array(plannerAccountSchema),
   remainingPoints: z.number().int().nonnegative(),
   plannerPointCost: z.number().int().nonnegative().nullable(),
+  scriptPointCost: z.number().int().nonnegative().nullable(),
   mode: z.enum(['mock', 'live']),
   permissions: z.object({ canPlan: z.boolean() }),
 });

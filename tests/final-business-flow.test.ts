@@ -3,7 +3,7 @@ import { and, eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as schema from '@/db/schema';
 import {
   aiPointLedger, approvals, clientMembers, contentEmbeddings, contents, contentStatusLogs, editVersions,
@@ -17,6 +17,7 @@ import { memoryService } from '@/lib/memory/service';
 import { historyRetrievalService } from '@/lib/history/service';
 import { aiPlannerService } from '@/lib/planner/service';
 import { scriptApprovalService } from '@/lib/scripts/service';
+import { writeSelectedScript, type WriterRequest } from '@/lib/scripts/writer-flow';
 import { shootService } from '@/lib/shoots/service';
 import { editReviewService } from '@/lib/edits/service';
 import { performanceService } from '@/lib/performance/service';
@@ -87,6 +88,115 @@ beforeEach(() => {
 });
 
 afterEach(() => sqlite.close());
+
+async function writerFixture() {
+  const master = masterDataService(db, ids.organization, ids.owner);
+  const client = master.createClient({ clientName: '快捷写作客户', industry: '餐饮', ownerUserId: ids.owner });
+  const brand = master.createBrand({ clientId: client.id, brandName: '快捷写作品牌', industry: '餐饮', city: '菏泽',
+    brandPositioning: '本地铜锅涮', coreProductsJson: ['手切羊肉'], coreSellingPointsJson: ['现切'] });
+  const store = master.createStore({ brandId: brand.id, storeName: '门店', city: '菏泽' });
+  const account = master.createAccount({ clientId: client.id, brandId: brand.id, storeId: store.id,
+    accountName: '老板IP', accountType: 'owner_ip', contentStyleJson: ['真实'] });
+  memoryService(db, ids.organization, ids.owner, { now: () => new Date(now) }).initialize({ accountId: account.id });
+  const planner = aiPlannerService(db, ids.organization, ids.owner, { now: () => new Date(now), client: mockClient() });
+  const scripts = scriptApprovalService(db, ids.organization, ids.owner, { now: () => new Date(now), client: mockClient() });
+  const session = await planner.generate({ accountId: account.id, plannedCount: 3, primaryGoal: 'exposure' });
+  const selected = session.candidates.find((candidate) => candidate.selectable)!;
+  const calls: string[] = [];
+  // Same request/response schemas as the browser, backed by actual services and SQLite.
+  const request: WriterRequest = async (url, responseSchema, init) => {
+    calls.push(`${init?.method ?? 'GET'} ${url}`);
+    const body: unknown = typeof init?.body === 'string' ? JSON.parse(init.body) : {};
+    if (url === `/api/ai/planner/${session.id}`) return responseSchema.parse(planner.detail(session.id));
+    if (url.endsWith('/persist')) return responseSchema.parse(planner.persist(session.id, body));
+    const contentId = url.split('/')[3];
+    if (url.endsWith('/generate')) return responseSchema.parse(await scripts.generate(contentId, body));
+    return responseSchema.parse(scripts.workspace(contentId));
+  };
+  return { planner, scripts, session, selected, request, calls };
+}
+
+describe('quick script writer orchestration', () => {
+  it('offers real choices without a monthly plan, saves exactly one choice, writes V1 and resumes without billing again', async () => {
+    const fixture = await writerFixture();
+    expect(fixture.planner.pageData()).toMatchObject({ plannerPointCost: 2, scriptPointCost: 3,
+      accounts: [expect.objectContaining({ currentPlan: null })] });
+    expect(fixture.session.candidates).toHaveLength(3);
+    expect(db.select().from(contents).all()).toHaveLength(0);
+    const onSaved = vi.fn();
+    const workspace = await writeSelectedScript(fixture.request, fixture.session.id, fixture.selected.id, onSaved);
+    expect(onSaved).toHaveBeenCalledOnce();
+    expect(workspace).toMatchObject({ content: { status: 'SCRIPTING' }, versions: [expect.objectContaining({ versionNo: 1 })] });
+    expect(db.select().from(contents).all()).toHaveLength(1);
+    expect(db.select().from(scriptVersions).all()).toHaveLength(1);
+    expect(db.select().from(organizationAiQuotas).get()?.usedPoints).toBe(5);
+    await writeSelectedScript(fixture.request, fixture.session.id, fixture.selected.id, vi.fn());
+    expect(db.select().from(scriptVersions).all()).toHaveLength(1);
+    expect(db.select().from(aiPointLedger).all()).toHaveLength(2);
+    expect(fixture.calls.filter((call) => call.includes('/persist'))).toHaveLength(1);
+    expect(fixture.calls.filter((call) => call.includes('/generate'))).toHaveLength(1);
+  });
+
+  it('recovers a lost persist response by reading the committed candidate instead of saving twice', async () => {
+    const fixture = await writerFixture();
+    const request: WriterRequest = async (url, responseSchema, init) => {
+      const result = await fixture.request(url, responseSchema, init);
+      if (url.endsWith('/persist')) throw new Error('Network response lost');
+      return result;
+    };
+    const result = await writeSelectedScript(request, fixture.session.id, fixture.selected.id, vi.fn());
+    expect(result.versions).toHaveLength(1);
+    expect(db.select().from(contents).all()).toHaveLength(1);
+    expect(db.select().from(organizationAiQuotas).get()?.usedPoints).toBe(5);
+  });
+
+  it('retains the saved topic after a failed script and retries only the script', async () => {
+    const fixture = await writerFixture();
+    const onSaved = vi.fn();
+    const failing: WriterRequest = async (url, responseSchema, init) => {
+      if (url.endsWith('/generate')) throw new Error('脚本暂时超时');
+      return fixture.request(url, responseSchema, init);
+    };
+    await expect(writeSelectedScript(failing, fixture.session.id, fixture.selected.id, onSaved)).rejects.toThrow('超时');
+    expect(onSaved).toHaveBeenCalledOnce();
+    expect(db.select().from(contents).all()).toHaveLength(1);
+    expect(db.select().from(scriptVersions).all()).toHaveLength(0);
+    expect(db.select().from(organizationAiQuotas).get()?.usedPoints).toBe(2);
+    await writeSelectedScript(fixture.request, fixture.session.id, fixture.selected.id, vi.fn());
+    expect(db.select().from(organizationAiQuotas).get()?.usedPoints).toBe(5);
+    expect(fixture.calls.filter((call) => call.includes('/persist'))).toHaveLength(1);
+  });
+
+  it('does not generate or bill when the selected candidate has been replaced', async () => {
+    const fixture = await writerFixture();
+    await fixture.planner.reangle(fixture.session.id, fixture.selected.id, { alternativeAngle: '顾客第一次到店怎么选' });
+    await expect(writeSelectedScript(fixture.request, fixture.session.id, fixture.selected.id, vi.fn())).rejects.toThrow('不可使用');
+    expect(db.select().from(contents).all()).toHaveLength(0);
+    expect(db.select().from(aiPointLedger).all()).toHaveLength(0);
+  });
+
+  it('does not bypass server permission checks when loading a session', async () => {
+    const fixture = await writerFixture();
+    const viewer = aiPlannerService(db, ids.organization, ids.viewer, { client: mockClient() });
+    const denied: WriterRequest = async (_url, responseSchema) => responseSchema.parse(viewer.detail(fixture.session.id));
+    await expect(writeSelectedScript(denied, fixture.session.id, fixture.selected.id, vi.fn())).rejects.toMatchObject({ status: 403 });
+    expect(db.select().from(contents).all()).toHaveLength(0);
+  });
+
+  it('preserves a save failure and never attempts script generation', async () => {
+    const fixture = await writerFixture();
+    const onSaved = vi.fn();
+    const failure = new Error('暂时无法保存，请重试');
+    const failing: WriterRequest = async (url, responseSchema, init) => {
+      if (url.endsWith('/persist')) throw failure;
+      return fixture.request(url, responseSchema, init);
+    };
+    await expect(writeSelectedScript(failing, fixture.session.id, fixture.selected.id, onSaved)).rejects.toBe(failure);
+    expect(onSaved).not.toHaveBeenCalled();
+    expect(db.select().from(contents).all()).toHaveLength(0);
+    expect(fixture.calls.some((call) => call.includes('/generate'))).toBe(false);
+  });
+});
 
 describe('final MVP business integration', () => {
   it('runs the real data, AI Mock, approval, production and review chain without bypassing services', async () => {

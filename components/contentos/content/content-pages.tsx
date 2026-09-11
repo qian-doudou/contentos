@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { LayoutDashboard, List, Plus } from 'lucide-react';
+import { LayoutDashboard, List, Plus, Sparkles } from 'lucide-react';
 import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -51,6 +51,7 @@ export function ContentListPage() {
     <ContentHeading title="内容策划" description="用结构化字段管理选题、角度、钩子、本地元素和发布时间。">
       <Button variant="outline" nativeButton={false} render={<Link href="/contents/import" />}>历史导入</Button>
       {data?.permissions.canWrite && <Button nativeButton={false} render={<Link href="/contents/new" />}><Plus />新建内容</Button>}
+      {data?.permissions.canWrite && <Button nativeButton={false} render={<Link href="/scripts/new" />}><Sparkles />AI 写脚本</Button>}
     </ContentHeading>
     <ContentNav />
     {state.loading ? <LoadingData /> : state.error ? <ErrorData error={state.error} retry={state.reload} /> : data && <>
@@ -84,6 +85,7 @@ export function NewContentPage() {
   const params = useSearchParams();
   const router = useRouter();
   return <div className="space-y-6"><ContentHeading title="新建内容策划" description="建立结构化内容档案；脚本正文由独立版本表承载，不写入 Content 主表。"><Button variant="outline" nativeButton={false} render={<Link href="/contents" />}>返回内容</Button></ContentHeading><ContentNav />
+    <section className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-cyan-200 bg-cyan-50 p-5"><div><h2 className="font-semibold text-cyan-950">想直接让AI写脚本？</h2><p className="mt-1 text-sm text-cyan-800">不用填写下方表单。选账号和选题，AI自动补齐内容。</p></div><Button nativeButton={false} render={<Link href={`/scripts/new${params.get('accountId') ? `?accountId=${encodeURIComponent(params.get('accountId')!)}` : ''}`} />}><Sparkles />去快捷写脚本</Button></section>
     {state.loading ? <LoadingData /> : state.error ? <ErrorData error={state.error} retry={state.reload} /> : state.data && (
       state.data.permissions.canWrite ? <section className="surface-card"><ContentForm options={state.data.options} defaults={{ accountId: params.get('accountId') || undefined, planId: params.get('planId') || undefined }} onSaved={id => router.push('/contents/' + id + '?created=1')} /></section>
         : <section className="surface-card"><EmptyData title="无创建权限" description="当前身份没有可管理的客户账号。" /></section>
@@ -107,12 +109,12 @@ export function ContentDetailPage({ id }: { id: string }) {
       <Button variant="outline" nativeButton={false} render={<Link href="/contents" />}>内容列表</Button>{state.data.permissions.canWrite && <ContentEditorDialog initial={item} options={state.data.options} onSaved={() => { setNotice('内容已保存'); state.reload(); }} />}
     </ContentHeading><ContentNav />
     {notice && <output className="block rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</output>}
+    <ScriptApprovalPanel contentId={item.id} onContentChanged={state.reload} />
     <section className="surface-card"><div className="flex flex-wrap items-start justify-between gap-4"><div className="flex flex-wrap gap-2"><Badge>{contentTypeLabels[item.contentType]}</Badge><Badge variant="secondary">{contentGoalLabels[item.contentGoal]}</Badge><Badge variant="secondary" className={priorityTone[item.priority]}>{priorityLabels[item.priority]}</Badge>{item.overdue ? <Badge variant="destructive">已逾期</Badge> : item.dueSoon ? <Badge className="bg-amber-50 text-amber-700">临近截止</Badge> : null}</div><div className="flex gap-2"><WorkflowStatusBadge status={item.status} />{item.isDemo && <Badge variant="outline">演示</Badge>}</div></div>
       <dl className="mt-6 grid gap-5 sm:grid-cols-2 xl:grid-cols-4"><Field label="运营负责人" value={item.operatorName} /><Field label="月度计划" value={item.planYear && item.planMonth ? periodLabel(item.planYear, item.planMonth) : '未归入'} /><Field label="计划发布日" value={formatLocalDate(item.plannedPublishDate)} /><Field label="截止日期" value={formatLocalDate(item.deadline)} /></dl>
     </section>
     <section className="grid gap-4 lg:grid-cols-2"><article className="surface-card"><h2 className="text-lg font-semibold">选题与切入</h2><dl className="mt-5 space-y-5"><Field label="选题" value={item.topic} /><Field label="切入角度" value={item.angle} /><Field label="核心信息" value={item.coreMessage} /></dl></article><article className="surface-card"><h2 className="text-lg font-semibold">钩子与转化</h2><dl className="mt-5 space-y-5"><Field label="钩子类型" value={hookTypeLabels[item.hookType]} /><Field label="钩子文案" value={item.hookText} /><Field label="行动引导" value={item.ctaType} /></dl></article></section>
     <section className="grid gap-4 lg:grid-cols-3"><article className="surface-card"><h2 className="font-semibold">产品表达</h2><p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-slate-600">{item.productText || '未填写'}</p></article><article className="surface-card"><h2 className="font-semibold">本地元素</h2><p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-slate-600">{item.localElement || '未填写'}</p></article><article className="surface-card"><h2 className="font-semibold">出镜人物</h2><div className="mt-4"><Tags values={item.peopleJson} /></div></article></section>
-    <ScriptApprovalPanel contentId={item.id} onContentChanged={state.reload} />
     <ContentWorkflowPanel content={item} onChanged={state.reload} />
     <EditReviewPanel contentId={item.id} onContentChanged={state.reload} />
     <ContentPerformancePanel contentId={item.id} onContentChanged={state.reload} />
