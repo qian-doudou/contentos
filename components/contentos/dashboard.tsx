@@ -84,17 +84,17 @@ export function Dashboard() {
     { label: '高风险客户', value: counts.highRiskClients, helper: '履约显著落后', icon: ShieldAlert, href: '/ops' },
   ] satisfies Array<{ label: string; value: number; helper: string; icon: LucideIcon; href: string }>;
 
-  return <div className="space-y-6">
+  return <div className="space-y-7">
     <header className="flex flex-wrap items-end justify-between gap-4">
       <div><p className="eyebrow">工作台</p><h1 className="page-title">{scriptRole ? '从一条好脚本开始' : `${data.workbench.currentUser.name}，查看今天的任务`}</h1><p className="page-description">{data.organization?.name ?? '当前组织'} · {roleLabels[data.workbench.currentUser.role]}</p></div>
-      <Badge className="bg-cyan-50 text-cyan-800" variant="secondary"><Bot />{data.system.llmMode === 'mock' ? 'AI 演示模式' : '千问已接入'}</Badge>
+      <Badge variant="outline"><Bot />{data.system.llmMode === 'mock' ? 'AI 演示模式' : '千问已接入'}</Badge>
     </header>
-    {notice && <div aria-live="polite" className="rounded-xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm text-cyan-800">{notice}</div>}
+    {notice && <div aria-live="polite" className="rounded-md border border-[#e9e9e7] bg-[#f7f7f5] px-4 py-3 text-sm text-[#37352f]">{notice}</div>}
     {scriptRole && <ScriptStartCard />}
-    <details className="rounded-xl border bg-white p-4">
-      <summary className="cursor-pointer text-sm font-medium text-slate-600">业务进度概览 · {counts.scriptsToWrite} 条待写脚本，{counts.pendingApproval} 项待审核</summary>
+    <details className="rounded-lg border border-[#e9e9e7] bg-white p-4">
+      <summary className="cursor-pointer text-sm font-medium text-[#787774]">业务进度概览 · {counts.scriptsToWrite} 条待写脚本，{counts.pendingApproval} 项待审核</summary>
     <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      {cards.map(({ label, value, helper, icon: Icon, href }) => <Link className="block rounded-xl focus:outline-none focus:ring-2 focus:ring-cyan-500" href={href} key={label}><Card className="h-full transition hover:-translate-y-0.5 hover:border-cyan-200"><CardHeader><CardDescription>{label}</CardDescription><CardTitle className="text-3xl tabular-nums">{value}</CardTitle><CardAction><span className="card-icon"><Icon /></span></CardAction></CardHeader><CardContent><p className="text-sm text-slate-500">{helper}</p></CardContent></Card></Link>)}
+      {cards.map(({ label, value, helper, icon: Icon, href }) => <Link className="block rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2383e2]/35" href={href} key={label}><Card className="h-full transition hover:border-[#d3d1cb]"><CardHeader><CardDescription>{label}</CardDescription><CardTitle className="text-3xl tabular-nums">{value}</CardTitle><CardAction><span className="card-icon"><Icon /></span></CardAction></CardHeader><CardContent><p className="text-sm text-[#787774]">{helper}</p></CardContent></Card></Link>)}
     </section>
     </details>
     <section className="grid gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(20rem,.5fr)]">
