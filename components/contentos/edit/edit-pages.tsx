@@ -123,10 +123,20 @@ export function EditReviewPanel({ contentId, onContentChanged }: { contentId: st
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const [reviewPath, setReviewPath] = useState('');
+  const [reviewCopyNotice, setReviewCopyNotice] = useState('');
   const [comments, setComments] = useState<Record<string, string>>({});
 
   function finish(message: string, path?: string | null) {
-    setNotice(message); setError(''); setReviewPath(path || ''); state.reload(); onContentChanged?.();
+    setNotice(message); setError(''); setReviewPath(path || ''); setReviewCopyNotice(''); state.reload(); onContentChanged?.();
+  }
+  async function copyReviewLink() {
+    if (!reviewPath) return;
+    try {
+      await navigator.clipboard.writeText(new URL(reviewPath, window.location.origin).toString());
+      setReviewCopyNotice('审核链接已复制，现在可以发给客户。');
+    } catch {
+      setReviewCopyNotice('自动复制失败，请长按或选中下方链接复制。');
+    }
   }
   async function mutate(action: 'assign' | 'start') {
     setPending(action); setNotice(''); setError('');
@@ -160,7 +170,7 @@ export function EditReviewPanel({ contentId, onContentChanged }: { contentId: st
         {state.data.permissions.canResubmit && <ReviewSubmissionDialog data={state.data} mode="resubmit" onSaved={(result, message) => finish(message, result.reviewPath)} />}
       </div>
       {notice && <output className="mt-4 block rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</output>}
-      {reviewPath && <div className="mt-3 rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-sm text-cyan-900"><p className="font-medium">审核链接只本次返回，请立即交给客户：</p><Link className="mt-1 inline-flex items-center gap-1 break-all underline" href={reviewPath} target="_blank">{typeof window === 'undefined' ? reviewPath : window.location.origin + reviewPath}<ExternalLink className="size-3" /></Link></div>}
+      {reviewPath && <div className="mt-3 rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-sm text-cyan-900"><div className="flex flex-wrap items-center justify-between gap-3"><p className="font-medium">审核链接仅本次返回，请立即复制并发给客户：</p><Button size="sm" variant="outline" onClick={() => void copyReviewLink()}><Copy />复制审核链接</Button></div><Link className="mt-2 inline-flex items-center gap-1 break-all underline" href={reviewPath} target="_blank">{typeof window === 'undefined' ? reviewPath : window.location.origin + reviewPath}<ExternalLink className="size-3" /></Link>{reviewCopyNotice && <output aria-live="polite" className="mt-2 block text-xs">{reviewCopyNotice}</output>}</div>}
       {error && <p role="alert" className="mt-4 rounded-lg bg-rose-50 p-3 text-sm text-rose-800">{error}</p>}
       <div className="mt-6 grid gap-6 xl:grid-cols-[1.35fr_1fr]">
         <div><div className="mb-3 flex items-center justify-between"><h3 className="flex items-center gap-2 font-semibold"><Copy className="size-4" />Diff 式版本历史</h3><Badge variant="outline">{state.data.versions.length} 版</Badge></div>{state.data.versions.length ? <div className="space-y-3">{state.data.versions.map((version, index) => {

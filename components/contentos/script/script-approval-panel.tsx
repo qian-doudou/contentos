@@ -119,6 +119,7 @@ export function ScriptApprovalPanel({ contentId, onContentChanged }: { contentId
   const [error, setError] = useState('');
   const [needsMemory, setNeedsMemory] = useState(false);
   const [reviewPath, setReviewPath] = useState('');
+  const [reviewCopyNotice, setReviewCopyNotice] = useState('');
   const [comments, setComments] = useState<Record<string, string>>({});
 
   function refreshed(notice: string) {
@@ -147,7 +148,7 @@ export function ScriptApprovalPanel({ contentId, onContentChanged }: { contentId
   }
 
   async function submitExternal(versionId: string) {
-    setPending('submit'); setMessage(''); setError(''); setReviewPath('');
+    setPending('submit'); setMessage(''); setError(''); setReviewPath(''); setReviewCopyNotice('');
     try {
       const result = await fetchData(`/api/contents/${contentId}/approvals`, submitApprovalResultSchema, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -156,6 +157,16 @@ export function ScriptApprovalPanel({ contentId, onContentChanged }: { contentId
       setReviewPath(result.reviewPath || '');
       refreshed('脚本已提交外部客户审核，当前活动批准版本已清空');
     } catch (reason) { setError(errorMessage(reason)); } finally { setPending(''); }
+  }
+
+  async function copyReviewLink() {
+    if (!reviewPath) return;
+    try {
+      await navigator.clipboard.writeText(new URL(reviewPath, window.location.origin).toString());
+      setReviewCopyNotice('审核链接已复制，现在可以发给客户。');
+    } catch {
+      setReviewCopyNotice('自动复制失败，请长按或选中下方链接复制。');
+    }
   }
 
   async function decide(approvalId: string, status: 'approved' | 'changes_requested' | 'rejected') {
@@ -174,7 +185,7 @@ export function ScriptApprovalPanel({ contentId, onContentChanged }: { contentId
     {state.loading ? <div className="mt-5 h-40 animate-pulse rounded-xl bg-slate-100" /> : state.error ? <div role="alert" className="mt-5 rounded-xl bg-rose-50 p-4 text-sm text-rose-800">{state.error.message}<Button className="ml-3" size="sm" variant="outline" onClick={state.reload}>重试</Button></div> : state.data && <>
       {state.data.permissions.canWrite && ['IDEA', 'SCRIPTING', 'APPROVED'].includes(state.data.content.status) && <div className="mt-5 flex flex-wrap gap-2"><Button disabled={!!pending || state.data.generatorPointCost === null || state.data.remainingPoints < (state.data.generatorPointCost ?? 0)} onClick={() => void generate()}><Bot />{pending === 'generate' ? '生成中…' : `AI 生成脚本${state.data.generatorPointCost === null ? '' : ` · ${state.data.generatorPointCost} 积分`}`}</Button><ManualScriptDialog data={state.data} onSaved={refreshed} />{state.data.content.currentScriptVersionId && ['SCRIPTING', 'APPROVED'].includes(state.data.content.status) && <Button variant="outline" disabled={!!pending} onClick={() => void submitExternal(state.data!.content.currentScriptVersionId!)}><ExternalLink />发给客户审核</Button>}</div>}
       {message && <output className="mt-4 block rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">{message}</output>}
-      {reviewPath && <div className="mt-3 rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-sm text-cyan-900"><p className="font-medium">审核链接仅本次返回，请立即交给客户：</p><Link className="mt-1 inline-flex items-center gap-1 break-all underline" href={reviewPath} target="_blank">{typeof window === 'undefined' ? reviewPath : window.location.origin + reviewPath}<ExternalLink className="size-3" /></Link></div>}
+      {reviewPath && <div className="mt-3 rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-sm text-cyan-900"><div className="flex flex-wrap items-center justify-between gap-3"><p className="font-medium">审核链接仅本次返回，请立即复制并发给客户：</p><Button size="sm" variant="outline" onClick={() => void copyReviewLink()}><Copy />复制审核链接</Button></div><Link className="mt-2 inline-flex items-center gap-1 break-all underline" href={reviewPath} target="_blank">{typeof window === 'undefined' ? reviewPath : window.location.origin + reviewPath}<ExternalLink className="size-3" /></Link>{reviewCopyNotice && <output aria-live="polite" className="mt-2 block text-xs">{reviewCopyNotice}</output>}</div>}
       {error && <p role="alert" className="mt-4 rounded-lg bg-rose-50 p-3 text-sm text-rose-800">{error}</p>}
       {needsMemory && <div className="mt-3 space-y-2 text-sm"><p className="text-slate-600">首次生成需要确认品牌资料。系统会将已有定位、产品和账号风格记入品牌记忆。</p><Button variant="outline" disabled={!!pending} onClick={() => void initializeMemory()}>确认已有品牌资料并继续</Button></div>}
       <div className="mt-6 grid gap-5 xl:grid-cols-[1.5fr_1fr]">
