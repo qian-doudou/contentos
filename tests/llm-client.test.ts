@@ -5,6 +5,7 @@ import {
   getLlmConfig,
   OpenAICompatibleClient,
   parseJsonOutput,
+  structuredSystemPrompt,
 } from '@/lib/llm/client';
 
 afterEach(() => vi.restoreAllMocks());
@@ -97,6 +98,7 @@ describe('OpenAI-compatible LLM client', () => {
       model: 'qwen3.8-max',
       temperature: 0,
       response_format: { type: 'json_object' },
+      enable_thinking: false,
     });
   });
 
@@ -141,13 +143,13 @@ describe('OpenAI-compatible LLM client', () => {
       client.complete({ messages: [{ role: 'user', content: '测试网络失败' }] }),
     ).rejects.toMatchObject({
       name: 'LlmRequestError',
-      message: 'fetch failed',
+      code: 'LLM_CONNECTION_FAILED',
       attempts: 2,
     });
     expect(unavailable).toHaveBeenCalledTimes(2);
   });
 
-  it('uses the supplied deterministic fallback after a transient live-provider failure', async () => {
+  it('never turns a failed live request into a chargeable mock success, and allows a later retry', async () => {
     const unavailable = vi
       .fn<typeof fetch>()
       .mockRejectedValue(new TypeError('fetch failed'));
@@ -158,25 +160,55 @@ describe('OpenAI-compatible LLM client', () => {
     await expect(client.complete({
       messages: [{ role: 'user', content: '生成可继续使用的选题' }],
       mockText: '{"items":[]}',
-    })).resolves.toMatchObject({
-      text: '{"items":[]}',
-      mode: 'mock',
-      model: 'mock-fallback:qwen3.7-plus',
+    })).rejects.toMatchObject({
+      code: 'LLM_CONNECTION_FAILED',
       attempts: 2,
-      inputTokens: null,
-      outputTokens: null,
     });
     expect(unavailable).toHaveBeenCalledTimes(2);
 
+    unavailable.mockResolvedValueOnce(Response.json({ choices: [{ message: { content: '{"status":"passed"}' } }] }));
     await expect(client.complete({
       messages: [{ role: 'user', content: '继续执行质量检查' }],
       mockText: '{"status":"passed"}',
     })).resolves.toMatchObject({
       text: '{"status":"passed"}',
-      mode: 'mock',
+      mode: 'live',
       attempts: 1,
     });
-    expect(unavailable).toHaveBeenCalledTimes(2);
+    expect(unavailable).toHaveBeenCalledTimes(3);
+  });
+
+  it('sends the saved output schema including enums as the protocol without changing the stored prompt', () => {
+    const schema = { type: 'object', properties: { status: { type: 'string', enum: ['passed', 'blocked'] } }, required: ['status'] };
+    expect(structuredSystemPrompt('质量检查', schema)).toContain(JSON.stringify(schema));
+    expect(structuredSystemPrompt('质量检查', schema)).toMatch(/^质量检查/);
+  });
+
+  it('provides actionable auth errors without exposing provider echoes', async () => {
+    const request = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ error: { message: 'secret-key /private/config' } }, { status: 401 }));
+    const client = new OpenAICompatibleClient(getLlmConfig({ LLM_API_KEY: 'secret-key' }), { fetch: request });
+    const failure = await client.complete({ messages: [], mockText: '{}' }).catch((error: unknown) => error);
+    expect(failure).toMatchObject({ code: 'LLM_AUTH_FAILED', attempts: 1 });
+    expect((failure as Error).message).not.toMatch(/secret-key|\/private/);
+    expect(request).toHaveBeenCalledOnce();
+  });
+
+  it('classifies timeouts and malformed provider responses after at most one retry', async () => {
+    const timeout = vi.fn<typeof fetch>().mockRejectedValue(new DOMException('Aborted', 'AbortError'));
+    const timedClient = new OpenAICompatibleClient(getLlmConfig({ LLM_API_KEY: 'test-key' }), { fetch: timeout });
+    await expect(timedClient.complete({ messages: [] })).rejects.toMatchObject({ code: 'LLM_TIMEOUT', httpStatus: 504, attempts: 2 });
+    const malformed = vi.fn<typeof fetch>().mockImplementation(async () => Response.json({ choices: [] }));
+    const invalidClient = new OpenAICompatibleClient(getLlmConfig({ LLM_API_KEY: 'test-key' }), { fetch: malformed });
+    await expect(invalidClient.complete({ messages: [] })).rejects.toMatchObject({ code: 'LLM_RESPONSE_INVALID', httpStatus: 502, attempts: 2 });
+    expect(timeout).toHaveBeenCalledTimes(2);
+    expect(malformed).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not send Bailian-only options to another compatible provider', async () => {
+    const request = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ choices: [{ message: { content: '{}' } }] }));
+    const client = new OpenAICompatibleClient(getLlmConfig({ LLM_API_KEY: 'test-key', LLM_BASE_URL: 'https://example.com/v1' }), { fetch: request });
+    await client.complete({ messages: [] });
+    expect(request.mock.calls[0][1]?.body).not.toContain('enable_thinking');
   });
 
   it('uses one JSON parser for plain and fenced model output', () => {

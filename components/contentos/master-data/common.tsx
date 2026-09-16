@@ -7,23 +7,13 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
 import { Skeleton } from '@/components/ui/skeleton';
+import { fetchData, RequestError } from '@/lib/api/client';
+export { fetchData, RequestError } from '@/lib/api/client';
 
 export const cooperationLabels: Record<string, string> = { lead: '意向', active: '合作中', paused: '暂停', ended: '已结束' };
 export const accountTypeLabels: Record<string, string> = { official: '官方账号', owner_ip: '老板 IP', employee_ip: '员工 IP', store: '门店账号', other: '其他' };
 export const statusLabels: Record<string, string> = { active: '启用', inactive: '停用' };
 
-export class RequestError extends Error {
-  constructor(message: string, public readonly code: string, public readonly requestId?: string) { super(message); }
-}
-export async function fetchData<T>(url: string, schema: z.ZodType<T>, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, { cache: 'no-store', ...init });
-  const payload = await response.json() as { success?: boolean; data?: unknown; request_id?: string; error?: { code?: string; message?: string; details?: { path?: string[]; message?: string }[] } };
-  if (!response.ok || !payload.success) {
-    const details = payload.error?.details?.map(issue => `${issue.path?.join('.')}: ${issue.message}`).join('；');
-    throw new RequestError(details || payload.error?.message || '请求失败', payload.error?.code || 'REQUEST_FAILED', payload.request_id);
-  }
-  return schema.parse(payload.data);
-}
 export function useApiData<T>(url: string, schema: z.ZodType<T>) {
   const [revision, setRevision] = useState(0);
   const [result, setResult] = useState<{ url: string; revision: number; data?: T; error?: Error }>();

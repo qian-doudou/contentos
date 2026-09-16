@@ -21,6 +21,7 @@ import {
   LlmRequestError,
   OpenAICompatibleClient,
   parseJsonOutput,
+  structuredSystemPrompt,
   type LlmCompletion,
 } from '@/lib/llm/client';
 import {
@@ -461,7 +462,7 @@ export function aiInfrastructureService(
         issueMessages(inputResult.error),
       );
     const renderedPrompt = {
-      system: skill.systemPrompt,
+      system: structuredSystemPrompt(skill.systemPrompt, skill.outputSchemaJson),
       user: skill.userPromptTemplate.includes('{{input_json}}')
         ? skill.userPromptTemplate.replaceAll(
             '{{input_json}}',

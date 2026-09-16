@@ -31,6 +31,8 @@ npm run dev
 
 没有 Key 时，Skill Test Run 使用由 Output Schema 确定生成的 Mock JSON。前端和 Run Trace 只显示安全配置、模型名和用量，不返回 API Key、Base URL、完整环境变量或服务器绝对路径。
 
+已配置 Key 的真实调用失败时，不会自动用本地模板冒充生成成功；保留失败 Run 和重试次数，失败的脚本不扣 Points。服务端 AI/Embedding 请求支持启动进程的 `HTTPS_PROXY` / `HTTP_PROXY` / `NO_PROXY`（也支持小写），不会改变本地业务 API 的网络行为。修改代理环境变量后需重启服务。连接、生成及恢复验证见 [AI 脚本排障](docs/ai-script-troubleshooting.md)。
+
 Embedding 使用 `EMBEDDING_BASE_URL` / `EMBEDDING_API_KEY` / `EMBEDDING_MODEL`，同样通过百炼 OpenAI 兼容端点。未配置 `EMBEDDING_API_KEY` 时使用中文字符 bigram、关键词权重和小型同义词归一的确定性向量，不会将完整脚本放入 Embedding。
 
 百炼官方参考：[Base URL 总览](https://help.aliyun.com/zh/model-studio/base-url)、[OpenAI 兼容 Chat](https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-chat-completions)、[文本模型选择](https://help.aliyun.com/zh/model-studio/text-generation-model/)。
@@ -365,7 +367,8 @@ npm run build
 | 无历史内容 / 无 Embedding Key | Top10 为空 / `fallback_bigram` | 允许继续；导入历史或配置百炼 Embedding Key 后刷新 |
 | Embedding 源字段变更 | 旧向量 `stale` | 调用同步接口；失败时自动回退确定性向量 |
 | 无 LLM Key | `mode=mock` | 核心演示继续，Run 明确标记 Mock |
-| LLM 超时/网络错误 | 最多重试 1 次，最终 `502 LLM_CALL_FAILED` | 保留失败 Run/usage，不扣 Points；可重试业务动作 |
+| LLM 超时/网络错误 | 最多重试 1 次；`504 LLM_TIMEOUT` / `502 LLM_CONNECTION_FAILED` | 检查网络与代理后重试；保留失败 Run/usage，不扣失败任务 Points，不替换为模板 |
+| LLM 鉴权/限流/模型错误 | `502 LLM_AUTH_FAILED` / `LLM_RATE_LIMITED` / `LLM_MODEL_NOT_FOUND` | 检查百炼地域、Key、余额与模型权限；不展示服务商原始错误正文 |
 | LLM 非法 JSON / Schema 错误 | `502 LLM_OUTPUT_INVALID` 或业务级输出校验码 | 不写业务表、不扣 Points；连续错误可扫描为 Bad Case |
 | AI 额度不足 | `402 AI_QUOTA_EXCEEDED` | 由管理员调整额度或等待新周期；正式任务不发起调用 |
 | Memory 同 key 冲突 | 服务自动“新增替代”；数据库唯一 Active | 刷新 Memory 列表，不编辑历史正文 |

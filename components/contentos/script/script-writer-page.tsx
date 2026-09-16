@@ -127,7 +127,7 @@ export function ScriptWriterPage() {
         setContentId(id); setSession(saved); setPending('script');
       });
       setNotice(result.fallbackUsed
-        ? '百炼暂时无法连接，本次脚本已使用本地安全模式生成并保存。你可以直接修改或提交审核。'
+        ? '当前未配置 API Key，本次为演示脚本，不是千问生成。请配置 Key 后生成正式脚本。'
         : '脚本已保存。可以直接阅读、复制口播，或修改后提交审核。');
       setRevision((value) => value + 1); page.reload();
     } catch (reason) { setError(reason instanceof Error ? reason : new Error('脚本生成失败')); }
@@ -153,11 +153,11 @@ export function ScriptWriterPage() {
   const step = contentId ? 3 : session ? 2 : 1;
   const canGenerate = page.data.permissions.canPlan && estimate !== null && page.data.remainingPoints >= estimate;
   return <div className="mx-auto max-w-5xl space-y-7">
-    <header className="flex flex-wrap items-start justify-between gap-4"><div><p className="eyebrow">AI 写脚本</p><h1 className="page-title">今天，拍点什么？</h1><p className="page-description">选账号、挑选题，AI把口播和分镜写好。</p></div><div className="flex flex-wrap items-center gap-2"><Badge variant="outline">{page.data.mode === 'mock' ? '演示生成' : '千问已接入'}</Badge><Badge variant="secondary">可用 {page.data.remainingPoints} 积分</Badge><Button variant="ghost" nativeButton={false} render={<Link href="/ai/planner" />}>批量策划</Button></div></header>
+    <header className="flex flex-wrap items-start justify-between gap-4"><div><p className="eyebrow">AI 写脚本</p><h1 className="page-title">今天，拍点什么？</h1><p className="page-description">选账号、挑选题，AI把口播和分镜写好。</p></div><div className="flex flex-wrap items-center gap-2"><Badge variant="outline">{page.data.mode === 'mock' ? '演示生成' : '千问已配置'}</Badge><Badge variant="secondary">可用 {page.data.remainingPoints} 积分</Badge><Button variant="ghost" nativeButton={false} render={<Link href="/ai/planner" />}>批量策划</Button></div></header>
     <Stepper step={step} />
     {error && <div role="alert" className="space-y-3 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800"><p>{error instanceof z.ZodError ? '返回结果格式异常，请重试。' : error.message}</p>{contentId && <p>选题已保存，重试只生成脚本，不会再次保存选题。已完成的选题策划费用保留，失败的脚本不扣积分。</p>}{error instanceof RequestError && error.code === 'ACTIVE_MEMORY_REQUIRED' && <Button variant="outline" disabled={Boolean(pending)} onClick={() => void initializeMemory()}>确认已有品牌资料并初始化记忆</Button>}{!contentId && <Button variant="outline" onClick={() => { setError(null); if (sessionParam && !session) window.location.assign('/scripts/new'); }}>继续选择</Button>}</div>}
     {notice && <output className="block rounded-md border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">{notice}</output>}
-    {session?.run.fallbackUsed && !contentId && <output className="block rounded-md border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">百炼暂时无法连接，本次已使用本地安全模式生成选题。选题仍可继续选择和生成脚本；连接恢复后会自动使用千问。</output>}
+    {session?.run.fallbackUsed && !contentId && <output className="block rounded-md border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">这批选题来自演示模式或历史降级模板，不是千问生成。若已配置 Key，请点击“换一批”重新生成真实 AI 选题。</output>}
     {pending && <output aria-live="polite" className="flex items-center gap-3 rounded-md border border-[#c9e3ec] bg-[#e7f3f8] p-5"><LoaderCircle className="size-5 shrink-0 animate-spin text-[#0b6e99]" /><span><span className="block font-medium text-[#37352f]">{pending === 'topics' ? '正在为你想选题，并检查历史重复…' : pending === 'saving' ? '正在保存你选中的选题…' : pending === 'script' ? '正在写口播和分镜…' : pending === 'memory' ? '正在确认品牌资料…' : '正在换角度，并重新检查重复…'}</span><span className="mt-1 block text-sm text-[#5f5e5a]">这可能需要一点时间，请保持页面打开。</span></span></output>}
     {!session && !contentId && <section className="surface-card space-y-6 sm:!p-7">
       {!writableAccounts.length ? <EmptyData title="还没有可写脚本的账号" description="先添加一个品牌账号；已有账号请联系负责人分配客户。"><Button nativeButton={false} render={<Link href="/accounts" />}>查看品牌与账号</Button></EmptyData> : <>

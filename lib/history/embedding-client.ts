@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { providerFetch } from '@/lib/llm/transport';
 import type { EmbeddingVector } from './contracts';
 import { weightedTermVector } from './similarity';
 
@@ -102,7 +103,7 @@ export class OpenAICompatibleEmbeddingClient {
 
     if (this.providerUnavailableUntil > Date.now()) return fallback();
 
-    const fetchImplementation = this.runtime.fetch ?? fetch;
+    const fetchImplementation = this.runtime.fetch ?? providerFetch;
     let lastError: unknown;
     for (let attempt = 1; attempt <= 2; attempt += 1) {
       const controller = new AbortController();

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { providerFetch } from './transport';
 
 export const bailianDefaults = {
   baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
@@ -72,8 +73,9 @@ export type LlmCompletion = {
   mode: 'mock' | 'live';
 };
 
-const providerCircuit = new Map<string, number>();
-const providerCircuitTtlMs = 60_000;
+export function structuredSystemPrompt(prompt: string, outputSchema: unknown) {
+  return `${prompt}\n\n输出协议：只返回一个 JSON 对象，字段名、类型、必填字段和枚举必须严格遵守以下 JSON Schema。不得添加 Markdown 代码块。\n${JSON.stringify(outputSchema)}`;
+}
 
 export function getLlmConfig(
   env: Partial<NodeJS.ProcessEnv> = process.env,
@@ -129,6 +131,8 @@ export class LlmRequestError extends Error {
     message: string,
     readonly attempts: number,
     options?: ErrorOptions,
+    readonly code = 'LLM_CALL_FAILED',
+    readonly httpStatus = 502,
   ) {
     super(message, options);
     this.name = 'LlmRequestError';
@@ -136,9 +140,9 @@ export class LlmRequestError extends Error {
 }
 
 function failureMessage(error: unknown) {
-  if (error instanceof DOMException && error.name === 'AbortError')
-    return 'LLM 请求超时';
-  return error instanceof Error ? error.message : 'LLM 请求失败';
+  if (error instanceof Error && ['AbortError', 'TimeoutError'].includes(error.name))
+    return 'AI 生成超时，请稍后重试；本次未生成成功，不扣积分。';
+  return '无法连接 AI 服务，请检查启动服务时的网络或 HTTPS_PROXY 设置后重试；本次不扣积分。';
 }
 
 export class OpenAICompatibleClient {
@@ -167,24 +171,6 @@ export class OpenAICompatibleClient {
     const clock = this.runtime.now ?? Date.now;
     const startedAt = clock();
 
-    const localFallback = (attempts: number): LlmCompletion => {
-      providerCircuit.set(this.config.baseUrl, clock() + providerCircuitTtlMs);
-      return {
-        text: input.mockText!,
-        providerRequestId: stableMockId({
-          fallbackFor: model,
-          messages: input.messages,
-          text: input.mockText,
-        }).replace('mock-', 'fallback-'),
-        model: `mock-fallback:${model}`,
-        inputTokens: null,
-        outputTokens: null,
-        durationMs: Math.max(0, clock() - startedAt),
-        attempts,
-        mode: 'mock',
-      };
-    };
-
     if (this.config.mode === 'mock') {
       return {
         text: input.mockText ?? '[MOCK] ContentOS deterministic response',
@@ -202,15 +188,10 @@ export class OpenAICompatibleClient {
       };
     }
 
-    // Once a provider transport failure has been confirmed, keep the rest of
-    // the current multi-step workflow usable instead of repeating the same
-    // timeout for planner, duplicate judge, quality checker, and script steps.
-    if (
-      input.mockText !== undefined &&
-      (providerCircuit.get(this.config.baseUrl) ?? 0) > clock()
-    ) return localFallback(1);
-
-    const fetchImpl = this.runtime.fetch ?? fetch;
+    const fetchImpl = this.runtime.fetch ?? providerFetch;
+    const hostname = new URL(this.config.baseUrl).hostname;
+    const bailianQwen = (hostname === 'dashscope.aliyuncs.com' || hostname.endsWith('.aliyuncs.com'))
+      && /^qwen(?:3[.\d-]|-plus|-flash)/.test(model) && !model.includes('thinking');
     let lastError: unknown;
     for (let attempt = 1; attempt <= 2; attempt += 1) {
       const controller = new AbortController();
@@ -229,22 +210,30 @@ export class OpenAICompatibleClient {
               messages: input.messages,
               temperature: 0,
               response_format: { type: 'json_object' },
+              ...(bailianQwen ? { enable_thinking: false } : {}),
             }),
             signal: controller.signal,
           },
         );
         if (!response.ok) {
-          const error = new Error(
-            `LLM request failed with HTTP ${response.status}`,
-          );
+          // Never forward a provider response body: it can echo input or credentials.
+          await response.body?.cancel();
+          const message = response.status === 401 || response.status === 403
+            ? 'AI 服务鉴权失败，请检查 API Key、地域和模型访问权限。'
+            : response.status === 429 ? 'AI 服务限流或服务商额度不足，请稍后重试或检查百炼余额。'
+              : response.status === 404 ? 'AI 模型或接口不存在，请检查模型名称与服务地址。'
+                : response.status >= 500 ? 'AI 服务暂时不可用，请稍后重试。'
+                  : `AI 服务拒绝请求（HTTP ${response.status}），请检查模型配置。`;
+          const code = response.status === 401 || response.status === 403 ? 'LLM_AUTH_FAILED'
+            : response.status === 429 ? 'LLM_RATE_LIMITED' : response.status === 404 ? 'LLM_MODEL_NOT_FOUND'
+              : 'LLM_PROVIDER_ERROR';
+          const error = new LlmRequestError(message, attempt, undefined, code);
           const transient = response.status === 429 || response.status >= 500;
           if (attempt < 2 && transient) {
             lastError = error;
             continue;
           }
-          if (transient && input.mockText !== undefined)
-            return localFallback(attempt);
-          throw new LlmRequestError(error.message, attempt, { cause: error });
+          throw error;
         }
         const payload = completionResponseSchema.parse(await response.json());
         return {
@@ -265,10 +254,10 @@ export class OpenAICompatibleClient {
         lastError = error;
         if (error instanceof LlmRequestError) throw error;
         if (attempt >= 2) {
-          if (input.mockText !== undefined) return localFallback(attempt);
-          throw new LlmRequestError(failureMessage(error), attempt, {
-            cause: error,
-          });
+          const timeout = error instanceof Error && ['AbortError', 'TimeoutError'].includes(error.name);
+          const invalid = error instanceof z.ZodError || error instanceof SyntaxError;
+          throw new LlmRequestError(invalid ? 'AI 服务返回格式异常，请重试；本次不扣积分。' : failureMessage(error), attempt,
+            { cause: error }, invalid ? 'LLM_RESPONSE_INVALID' : timeout ? 'LLM_TIMEOUT' : 'LLM_CONNECTION_FAILED', timeout ? 504 : 502);
         }
       } finally {
         clearTimeout(timer);
@@ -286,7 +275,7 @@ export class OpenAICompatibleClient {
     tier?: LlmTier;
   }): Promise<{ value: T; completion: LlmCompletion }> {
     const completion = await this.complete({
-      messages: input.messages,
+      messages: [{ role: 'system', content: structuredSystemPrompt('', z.toJSONSchema(input.schema)) }, ...input.messages],
       tier: input.tier,
       mockText:
         this.config.mode === 'mock'

@@ -6,7 +6,7 @@ import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as schema from '@/db/schema';
 import {
-  aiPointLedger, approvals, clientMembers, contentEmbeddings, contents, contentStatusLogs, editVersions,
+  aiPointLedger, aiUsageLogs, approvals, clientMembers, contentEmbeddings, contents, contentStatusLogs, editVersions,
   memories, monthlyPlans, organizationAiQuotas, organizations, performanceSnapshots, runSteps, runs,
   scriptVersions, skills, users,
 } from '@/db/schema';
@@ -173,6 +173,34 @@ describe('quick script writer orchestration', () => {
     await expect(writeSelectedScript(fixture.request, fixture.session.id, fixture.selected.id, vi.fn())).rejects.toThrow('不可使用');
     expect(db.select().from(contents).all()).toHaveLength(0);
     expect(db.select().from(aiPointLedger).all()).toHaveLength(0);
+  });
+
+  it('records live connection failure and retry count without saving a fake script or charging script points', async () => {
+    const fixture = await writerFixture();
+    const failedFetch = vi.fn<typeof fetch>().mockRejectedValue(new TypeError('fetch failed'));
+    const client = new OpenAICompatibleClient(getLlmConfig({ LLM_API_KEY: 'test-only-key' }), { fetch: failedFetch });
+    const liveScripts = scriptApprovalService(db, ids.organization, ids.owner, { now: () => new Date(now), client });
+    const request: WriterRequest = async (url, responseSchema, init) => {
+      if (url.endsWith('/generate')) return responseSchema.parse(await liveScripts.generate(url.split('/')[3], {}));
+      return fixture.request(url, responseSchema, init);
+    };
+    await expect(writeSelectedScript(request, fixture.session.id, fixture.selected.id, vi.fn()))
+      .rejects.toMatchObject({ status: 502, code: 'LLM_CONNECTION_FAILED' });
+    expect(failedFetch).toHaveBeenCalledTimes(2);
+    expect(db.select().from(scriptVersions).all()).toHaveLength(0);
+    expect(db.select().from(organizationAiQuotas).get()?.usedPoints).toBe(2);
+    const usage = db.select().from(aiUsageLogs).where(eq(aiUsageLogs.skillCode, 'script_generator')).get()!;
+    expect(usage).toMatchObject({ status: 'failed', attempts: 2, billedPoints: 0, inputTokens: null, outputTokens: null });
+    expect(db.select().from(runs).where(eq(runs.id, usage.runId)).get()?.status).toBe('failed');
+    const requestBody = failedFetch.mock.calls[0][1]?.body;
+    if (typeof requestBody !== 'string') throw new Error('Expected JSON request body');
+    const body = JSON.parse(requestBody);
+    expect(body.messages[0].content).toContain('spoken_script');
+    expect(body.messages[0].content).toContain('JSON Schema');
+    await writeSelectedScript(fixture.request, fixture.session.id, fixture.selected.id, vi.fn());
+    expect(fixture.calls.filter(call => call.includes('/persist'))).toHaveLength(1);
+    expect(db.select().from(scriptVersions).all()).toHaveLength(1);
+    expect(db.select().from(organizationAiQuotas).get()?.usedPoints).toBe(5);
   });
 
   it('does not bypass server permission checks when loading a session', async () => {

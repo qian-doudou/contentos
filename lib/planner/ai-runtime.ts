@@ -7,7 +7,7 @@ import { estimateModelCost } from '@/lib/ai/service';
 import { zodFromJsonSchema } from '@/lib/ai/json-schema';
 import { ApiError } from '@/lib/api/envelope';
 import { permissionService } from '@/lib/auth/permissions';
-import { OpenAICompatibleClient, parseJsonOutput, type LlmCompletion } from '@/lib/llm/client';
+import { LlmRequestError, OpenAICompatibleClient, parseJsonOutput, structuredSystemPrompt, type LlmCompletion } from '@/lib/llm/client';
 
 type Database = BetterSQLite3Database<typeof tables>;
 type Skill = z.infer<typeof skillSchema>;
@@ -65,7 +65,7 @@ export function plannerAiRuntime(
 
   function persistUsage(args: {
     runId: string; stepId: string; skill: Skill; accountId: string; clientId: string;
-    completion: LlmCompletion | null; status: 'completed' | 'failed'; durationMs: number;
+    completion: LlmCompletion | null; status: 'completed' | 'failed'; durationMs: number; attempts?: number;
   }) {
     const createdAt = timestamp();
     const model = args.completion?.model ?? client.publicConfig.models[args.skill.modelProfile];
@@ -77,7 +77,7 @@ export function plannerAiRuntime(
       skillCode: args.skill.code, skillVersion: args.skill.currentVersion,
       providerRequestId: args.completion?.providerRequestId ?? null, model, inputTokens, outputTokens,
       estimatedCost: estimateModelCost(inputTokens, outputTokens, price(model, createdAt)),
-      billedPoints: 0, attempts: args.completion?.attempts ?? 1,
+      billedPoints: 0, attempts: args.completion?.attempts ?? args.attempts ?? 1,
       durationMs: args.durationMs, status: args.status,
       isDemo: permissions.organization.isDemo, createdAt,
     });
@@ -110,7 +110,7 @@ export function plannerAiRuntime(
     if (!inputResult.success)
       throw new ApiError(400, 'SKILL_INPUT_INVALID', 'Skill 输入不符合 Schema', issues(inputResult.error));
     const rendered = {
-      system: selectedSkill.systemPrompt,
+      system: structuredSystemPrompt(selectedSkill.systemPrompt, selectedSkill.outputSchemaJson),
       user: selectedSkill.userPromptTemplate.includes('{{input_json}}')
         ? selectedSkill.userPromptTemplate.replaceAll('{{input_json}}', JSON.stringify(inputResult.data, null, 2))
         : `${selectedSkill.userPromptTemplate}\n\n${JSON.stringify(inputResult.data, null, 2)}`,
@@ -121,9 +121,6 @@ export function plannerAiRuntime(
       completion = await client.complete({
         tier: selectedSkill.modelProfile,
         messages: [{ role: 'system', content: rendered.system }, { role: 'user', content: rendered.user }],
-        // Keep a validated deterministic result available when the configured
-        // provider is temporarily unreachable. Permanent 4xx configuration
-        // errors still fail and are never hidden by this fallback.
         mockText: JSON.stringify(args.mockOutput),
       });
       const rawParsed = parseJsonOutput(completion.text);
@@ -143,9 +140,10 @@ export function plannerAiRuntime(
       persistUsage({
         runId: args.runId, stepId: args.stepId, skill: selectedSkill,
         accountId: args.accountId, clientId: args.clientId, completion,
-        status: 'failed', durationMs,
+        status: 'failed', durationMs, attempts: error instanceof LlmRequestError ? error.attempts : undefined,
       });
       if (error instanceof ApiError) throw error;
+      if (error instanceof LlmRequestError) throw new ApiError(error.httpStatus, error.code, error.message);
       throw new ApiError(502, 'LLM_CALL_FAILED', error instanceof Error ? error.message : 'LLM 调用失败');
     }
   }
