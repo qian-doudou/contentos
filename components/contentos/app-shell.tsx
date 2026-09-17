@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
 import {
-  Activity, BarChart3, Building2, Camera, Clapperboard, Cpu, FileCheck2, Film,
+  Activity, BarChart3, Building2, Camera, Clapperboard, Cpu, FileCheck2, Film, History,
   Flame, Gauge, Menu, PanelTop, Settings, ShieldCheck, Sparkles, Users, FilePenLine,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -27,6 +27,7 @@ const navigationGroups = [
     { href: '/analytics/content', label: '运营数据', icon: BarChart3, access: 'analytics' },
   ] },
   { label: 'AI 工具', items: [
+    { href: '/scripts', label: '脚本库', icon: History, access: 'scripts' },
     { href: '/scripts/new', label: 'AI 写脚本', icon: FilePenLine, access: 'scripts' },
     { href: '/ai/inspiration', label: '爆款灵感', icon: Flame, access: 'ai' },
     { href: '/ai', label: 'AI 运营', icon: Sparkles, access: 'ai' },
