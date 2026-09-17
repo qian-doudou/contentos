@@ -64,7 +64,7 @@ function percentage(value: number) {
   return `${Math.round(value * 100)}%`;
 }
 
-export function ContentImportPage() {
+export function ContentImportPage({ embedded = false }: { embedded?: boolean } = {}) {
   const state = useApiData('/api/contents/import', contentImportPageDataSchema);
   const [preview, setPreview] = useState<ContentImportPreview | null>(null);
   const [pending, setPending] = useState(false);
@@ -138,7 +138,7 @@ export function ContentImportPage() {
 
   return (
     <div className="space-y-6">
-      <ContentHeading
+      {embedded ? <section className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xl font-semibold">历史导入</h2><p className="mt-1 text-sm text-slate-500">CSV / JSON 先预览校验，再写入 SQLite 并建立内容索引。</p></div><Button variant="outline" nativeButton={false} render={<Link href="/ai/dedup-test" />}><FileSearch />去重测试</Button></section> : <ContentHeading
         title="历史内容导入"
         description="CSV / JSON 先预览校验，再写入 SQLite 并建立可失效的内容索引。"
       >
@@ -157,7 +157,7 @@ export function ContentImportPage() {
           <FileSearch />
           去重测试
         </Button>
-      </ContentHeading>
+      </ContentHeading>}
       {state.loading ? (
         <LoadingData />
       ) : state.error ? (

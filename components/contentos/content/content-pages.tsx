@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { CalendarRange, LayoutDashboard, List, Plus, Sparkles } from 'lucide-react';
+import { LayoutDashboard, List, Plus, Sparkles } from 'lucide-react';
 import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -22,7 +22,9 @@ import { WorkflowBoard, WorkflowStatusBadge } from './workflow-board';
 import { ScriptApprovalPanel } from '@/components/contentos/script/script-approval-panel';
 import { EditReviewPanel } from '@/components/contentos/edit/edit-pages';
 import { ContentPerformancePanel } from '@/components/contentos/performance/performance-pages';
+import { ContentImportPage } from '@/components/contentos/history-pages';
 import { approvalStatuses, scriptDraftStatuses } from '@/lib/content/workflow';
+import { PlanListPage } from './plan-pages';
 
 const priorityTone: Record<string, string> = {
   low: 'bg-slate-100 text-slate-600', normal: 'bg-cyan-50 text-cyan-700', high: 'bg-amber-50 text-amber-700', urgent: 'bg-rose-50 text-rose-700',
@@ -40,6 +42,7 @@ export function ContentListPage() {
   const boardState = useApiData('/api/contents/board?' + boardQuery, contentBoardSchema);
   const data = state.data;
   const [view, setView] = useState<'kanban' | 'table'>('kanban');
+  const [section, setSection] = useState<'contents' | 'plans' | 'import'>('contents');
   const groupedStatuses = params.get('statuses');
   const quickFilterLabel = groupedStatuses === scriptDraftStatuses.join(',') ? '待写脚本'
     : groupedStatuses === approvalStatuses.join(',') ? '待审核'
@@ -61,12 +64,17 @@ export function ContentListPage() {
   }
   return <div className="space-y-6">
     <ContentHeading title="内容与脚本" description="在同一个工作台管理选题、脚本版本、审核状态和后续发布流程。">
-      <Button variant="outline" nativeButton={false} render={<Link href="/contents/plans" />}><CalendarRange />月度计划</Button>
-      <Button variant="outline" nativeButton={false} render={<Link href="/contents/import" />}>历史导入</Button>
       {data?.permissions.canWrite && <Button nativeButton={false} render={<Link href="/contents/new" />}><Plus />新建内容</Button>}
       {data?.permissions.canWrite && <Button nativeButton={false} render={<Link href="/scripts/new" />}><Sparkles />AI 写脚本</Button>}
     </ContentHeading>
-    {state.loading ? <LoadingData /> : state.error ? <ErrorData error={state.error} retry={state.reload} /> : data && <>
+    <div aria-label="内容工作区切换" className="inline-flex rounded-xl border border-[#e9e9e7] bg-white p-1" role="tablist">
+      {([
+        ['contents', '内容列表'],
+        ['plans', '月度计划'],
+        ['import', '历史导入'],
+      ] as const).map(([value, label]) => <button aria-selected={section === value} className={section === value ? 'rounded-lg bg-[#37352f] px-5 py-2 text-sm font-medium text-white' : 'rounded-lg px-5 py-2 text-sm font-medium text-[#787774] transition hover:bg-[#f7f7f5]'} key={value} onClick={() => setSection(value)} role="tab" type="button">{label}</button>)}
+    </div>
+    {section === 'plans' ? <PlanListPage embedded /> : section === 'import' ? <ContentImportPage embedded /> : state.loading ? <LoadingData /> : state.error ? <ErrorData error={state.error} retry={state.reload} /> : data && <>
       <form className="surface-card grid items-end gap-3 sm:grid-cols-2 xl:grid-cols-8" key={query} onSubmit={filter}>
         <label htmlFor="content-filter-search" className="space-y-1.5 text-sm">搜索<Input id="content-filter-search" name="search" maxLength={160} placeholder="标题或选题" defaultValue={params.get('search') || ''} /></label>
         <label htmlFor="content-filter-account" className="space-y-1.5 text-sm">账号<NativeSelect id="content-filter-account" className="w-full" name="accountId" defaultValue={params.get('accountId') || ''}><option value="">全部账号</option>{data.options.accounts.map(item => <option key={item.id} value={item.id}>{item.clientName} / {item.accountName}</option>)}</NativeSelect></label>

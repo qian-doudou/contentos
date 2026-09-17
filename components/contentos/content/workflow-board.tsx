@@ -1,7 +1,10 @@
 'use client';
 
+/* oxlint-disable jsx-a11y/no-noninteractive-element-interactions -- Native drag events live on the whole card; links and state buttons remain keyboard-accessible. */
+
+import Link from 'next/link';
 import { useState } from 'react';
-import { GripVertical } from 'lucide-react';
+import { Eye, GripVertical } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -26,6 +29,8 @@ export function WorkflowBoard({ data, query, onChanged }: { data: ContentBoard; 
   const [columns, setColumns] = useState(data.columns);
   const [pendingIds, setPendingIds] = useState<string[]>([]);
   const [loadingColumns, setLoadingColumns] = useState<string[]>([]);
+  const [draggingId, setDraggingId] = useState('');
+  const [dropColumnId, setDropColumnId] = useState('');
   const [message, setMessage] = useState('');
   const items = columns.flatMap(column => column.items);
 
@@ -103,22 +108,36 @@ export function WorkflowBoard({ data, query, onChanged }: { data: ContentBoard; 
 
   return <div className="space-y-3">
     <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-slate-500">
-      <span>各流程列独立分页，已显示 {items.length} / {data.total} 条；拖拽或使用卡片按钮只会调用合法状态 API。</span>
+      <span>已显示 {items.length} / {data.total} 条；拖动整张卡片可切换合法状态，点击“查看详情”进入完整档案。</span>
       {message && <output className="font-medium text-cyan-800">{message}</output>}
     </div>
     <div className="grid auto-cols-[18rem] grid-flow-col gap-3 overflow-x-auto pb-3">
       {columns.map(column => {
         const cards = column.items;
-        return <section key={column.id} className="min-h-96 rounded-xl border bg-slate-50/80 p-3">
-          <button type="button" className="mb-3 flex w-full items-center justify-between rounded-lg text-left" onDragOver={event => event.preventDefault()} onDrop={event => drop(event, column.statuses)}><span className="font-semibold">{column.label}</span><Badge variant="outline">{column.total}</Badge></button>
+        return <section
+          key={column.id}
+          className={`min-h-96 rounded-xl border p-3 transition-colors ${dropColumnId === column.id ? 'border-cyan-400 bg-cyan-50' : 'bg-slate-50/80'}`}
+          onDragEnter={() => draggingId && setDropColumnId(column.id)}
+          onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; }}
+          onDrop={event => { setDropColumnId(''); drop(event, column.statuses); }}
+        >
+          <div className="mb-3 flex w-full items-center justify-between rounded-lg"><span className="font-semibold">{column.label}</span><Badge variant="outline">{column.total}</Badge></div>
           <div className="space-y-3">{cards.map(item => {
             const account = data.options.accounts.find(option => option.id === item.accountId);
             const writable = Boolean(account?.canWrite);
             const next = manualNextStatuses(item.status);
-            return <article key={item.id} className="rounded-xl border bg-white p-3 shadow-sm">
-              <div className="flex items-start justify-between gap-2"><a className="font-medium leading-5 text-slate-900 hover:text-cyan-800" href={`/contents/${item.id}`}>{item.title}</a><div className="flex items-center gap-1">{item.overdue ? <Badge variant="destructive">已逾期</Badge> : item.dueSoon ? <Badge className="bg-amber-50 text-amber-700">临近截止</Badge> : null}{writable && next.length > 0 && <button type="button" draggable={!pendingIds.includes(item.id)} onDragStart={event => event.dataTransfer.setData('text/content-id', item.id)} className="cursor-grab rounded p-1 text-slate-400 hover:bg-slate-100" aria-label={`拖拽「${item.title}」`}><GripVertical className="size-4" /></button>}</div></div>
+            const draggable = writable && next.length > 0 && !pendingIds.includes(item.id);
+            return <article
+              key={item.id}
+              aria-label={`${item.title} 内容卡片`}
+              className={`rounded-xl border bg-white p-3 shadow-sm transition ${draggable ? 'cursor-grab hover:border-cyan-300 active:cursor-grabbing' : ''} ${draggingId === item.id ? 'opacity-50' : ''}`}
+              draggable={draggable}
+              onDragEnd={() => { setDraggingId(''); setDropColumnId(''); }}
+              onDragStart={event => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/content-id', item.id); setDraggingId(item.id); }}
+            >
+              <div className="flex items-start justify-between gap-2"><Link className="font-medium leading-5 text-slate-900 hover:text-cyan-800" href={`/contents/${item.id}`}>{item.title}</Link><div className="flex items-center gap-1">{item.overdue ? <Badge variant="destructive">已逾期</Badge> : item.dueSoon ? <Badge className="bg-amber-50 text-amber-700">临近截止</Badge> : null}{draggable && <span aria-hidden="true" className="rounded p-1 text-slate-400"><GripVertical className="size-4" /></span>}</div></div>
               <p className="mt-2 text-xs text-slate-500">{item.accountName} · {formatLocalDate(item.deadline)}</p>
-              <div className="mt-3"><WorkflowStatusBadge status={item.status} /></div>
+              <div className="mt-3 flex items-center justify-between gap-2"><WorkflowStatusBadge status={item.status} /><Button size="sm" variant="ghost" nativeButton={false} render={<Link href={`/contents/${item.id}`} />}><Eye />查看详情</Button></div>
               {writable && next.length > 0 && <div className="mt-3 flex flex-wrap gap-1.5">{next.map(status => <Button key={status} size="sm" variant="outline" disabled={pendingIds.includes(item.id)} onClick={() => void transition(item.id, status)}>{contentStatusLabels[status]}</Button>)}</div>}
               {writable && next.length === 0 && item.status !== 'REVIEWED' && <p className="mt-3 text-xs text-slate-400">下一步需由对应业务事务触发</p>}
             </article>;

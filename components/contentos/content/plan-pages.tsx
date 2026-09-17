@@ -18,10 +18,12 @@ import { EmptyData, ErrorData, LoadingData, Tags, useApiData } from '@/component
 import { ActiveBadge, ContentHeading, periodLabel } from './common';
 import { PlanEditorDialog, PlanForm } from './plan-form';
 
-export function PlanListPage() {
+export function PlanListPage({ embedded = false }: { embedded?: boolean } = {}) {
   const params = useSearchParams();
   const router = useRouter();
-  const query = params.toString();
+  const [embeddedQuery, setEmbeddedQuery] = useState('');
+  const query = embedded ? embeddedQuery : params.toString();
+  const activeParams = new URLSearchParams(query);
   const state = useApiData('/api/content-plans?' + query, monthlyPlanListSchema);
   const data = state.data;
   function filter(event: React.SyntheticEvent<HTMLFormElement, SubmitEvent>) {
@@ -31,24 +33,26 @@ export function PlanListPage() {
       if (typeof value === 'string' && value.trim()) next.set(key, value.trim());
     });
     next.set('page', '1');
-    router.push('/contents/plans?' + next.toString());
+    if (embedded) setEmbeddedQuery(next.toString());
+    else router.push('/contents/plans?' + next.toString());
   }
   function page(value: number) {
     const next = new URLSearchParams(query); next.set('page', String(value));
-    router.push('/contents/plans?' + next.toString());
+    if (embedded) setEmbeddedQuery(next.toString());
+    else router.push('/contents/plans?' + next.toString());
   }
   return <div className="space-y-6">
-    <ContentHeading title="月度内容计划" description="为每个账号设定月度目标、重点产品和内容类型配比。">
+    {embedded ? <section className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xl font-semibold">月度计划</h2><p className="mt-1 text-sm text-slate-500">按账号管理每月目标、产品重点与内容配比。</p></div>{data?.permissions.canWrite && <Button nativeButton={false} render={<Link href="/contents/plans/new" />}><Plus />新建计划</Button>}</section> : <ContentHeading title="月度内容计划" description="为每个账号设定月度目标、重点产品和内容类型配比。">
       <Button variant="outline" nativeButton={false} render={<Link href="/contents" />}>内容与脚本</Button>
       {data?.permissions.canWrite && <Button nativeButton={false} render={<Link href="/contents/plans/new" />}><Plus />新建计划</Button>}
-    </ContentHeading>
+    </ContentHeading>}
     {state.loading ? <LoadingData /> : state.error ? <ErrorData error={state.error} retry={state.reload} /> : data && <>
       <form className="surface-card grid items-end gap-3 sm:grid-cols-2 xl:grid-cols-[2fr_1fr_1fr_1fr_auto_auto]" key={query} onSubmit={filter}>
-        <label htmlFor="plan-filter-account" className="space-y-1.5 text-sm">账号<NativeSelect id="plan-filter-account" className="w-full" name="accountId" defaultValue={params.get('accountId') || ''}><option value="">全部账号</option>{data.options.accounts.map(account => <option key={account.id} value={account.id}>{account.clientName} / {account.accountName}</option>)}</NativeSelect></label>
-        <label htmlFor="plan-filter-year" className="space-y-1.5 text-sm">年份<Input id="plan-filter-year" name="year" type="number" min={2000} max={2100} defaultValue={params.get('year') || ''} /></label>
-        <label htmlFor="plan-filter-month" className="space-y-1.5 text-sm">月份<NativeSelect id="plan-filter-month" className="w-full" name="month" defaultValue={params.get('month') || ''}><option value="">全部月份</option>{Array.from({ length: 12 }, (_, index) => <option key={index + 1} value={index + 1}>{index + 1} 月</option>)}</NativeSelect></label>
-        <label htmlFor="plan-filter-status" className="space-y-1.5 text-sm">状态<NativeSelect id="plan-filter-status" className="w-full" name="status" defaultValue={params.get('status') || ''}><option value="">全部状态</option><option value="active">启用</option><option value="inactive">停用</option></NativeSelect></label>
-        <input type="hidden" name="pageSize" value={params.get('pageSize') || '10'} /><Button type="submit">查询</Button><Button variant="ghost" type="button" onClick={() => router.push('/contents/plans')}>清空</Button>
+        <label htmlFor="plan-filter-account" className="space-y-1.5 text-sm">账号<NativeSelect id="plan-filter-account" className="w-full" name="accountId" defaultValue={activeParams.get('accountId') || ''}><option value="">全部账号</option>{data.options.accounts.map(account => <option key={account.id} value={account.id}>{account.clientName} / {account.accountName}</option>)}</NativeSelect></label>
+        <label htmlFor="plan-filter-year" className="space-y-1.5 text-sm">年份<Input id="plan-filter-year" name="year" type="number" min={2000} max={2100} defaultValue={activeParams.get('year') || ''} /></label>
+        <label htmlFor="plan-filter-month" className="space-y-1.5 text-sm">月份<NativeSelect id="plan-filter-month" className="w-full" name="month" defaultValue={activeParams.get('month') || ''}><option value="">全部月份</option>{Array.from({ length: 12 }, (_, index) => <option key={index + 1} value={index + 1}>{index + 1} 月</option>)}</NativeSelect></label>
+        <label htmlFor="plan-filter-status" className="space-y-1.5 text-sm">状态<NativeSelect id="plan-filter-status" className="w-full" name="status" defaultValue={activeParams.get('status') || ''}><option value="">全部状态</option><option value="active">启用</option><option value="inactive">停用</option></NativeSelect></label>
+        <input type="hidden" name="pageSize" value={activeParams.get('pageSize') || '10'} /><Button type="submit">查询</Button><Button variant="ghost" type="button" onClick={() => embedded ? setEmbeddedQuery('') : router.push('/contents/plans')}>清空</Button>
       </form>
       <section className="surface-card !p-0">
         <div className="flex items-center justify-between border-b p-5"><h2 className="font-semibold">计划列表</h2><Badge variant="outline">共 {data.total} 个计划</Badge></div>
