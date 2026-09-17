@@ -47,7 +47,7 @@ export function ClientDetailPage({ id }: { id: string }) {
       </dl>
       <div className="mt-5 border-t pt-4"><p className="text-sm text-slate-500">备注</p><p className="mt-2 whitespace-pre-wrap text-sm">{client.notes || '未填写'}</p></div>
     </section>
-    <div className="flex items-center justify-between"><h2 className="text-xl font-semibold">品牌与账号</h2>{state.data.permissions.canWrite && <EditorDialog kind="brand" hierarchy={hierarchy} parent={{ clientId: id }} onSaved={saved} />}</div>
+    <div className="flex flex-wrap items-end justify-between gap-3"><div><h2 className="text-xl font-semibold">品牌、门店与账号</h2><p className="mt-1 text-sm text-slate-500">该客户的经营主体和抖音账号统一在这里维护。</p></div>{state.data.permissions.canWrite && <EditorDialog kind="brand" hierarchy={hierarchy} parent={{ clientId: id }} onSaved={saved} />}</div>
     <HierarchyView data={hierarchy} onSaved={saved} />
   </div>;
 }

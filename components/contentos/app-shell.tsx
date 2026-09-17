@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useState } from 'react';
 import {
   Activity, BarChart3, Building2, Camera, Clapperboard, Cpu, FileCheck2, Film, History,
-  Flame, Gauge, Menu, PanelTop, Settings, ShieldCheck, Sparkles, Users, FilePenLine,
+  Flame, Gauge, Menu, Settings, ShieldCheck, Sparkles, Users, FilePenLine,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { NativeSelect } from '@/components/ui/native-select';
@@ -22,7 +22,6 @@ const navigationGroups = [
   ] },
   { label: '内容业务', items: [
     { href: '/clients', label: '客户', icon: Building2, access: 'masterData' },
-    { href: '/accounts', label: '品牌与账号', icon: PanelTop, access: 'masterData' },
     { href: '/contents', label: '内容运营', icon: Clapperboard, access: 'contents' },
     { href: '/analytics/content', label: '运营数据', icon: BarChart3, access: 'analytics' },
   ] },

@@ -239,7 +239,7 @@ export function ScriptWriterPage() {
     {session?.run.fallbackUsed && !contentId && <output className="block rounded-md border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">这批选题来自演示模式或历史降级模板，不是千问生成。若已配置 Key，请点击“换一批”重新生成真实 AI 选题。</output>}
     {pending && <output aria-live="polite" className="flex items-center gap-3 rounded-md border border-[#c9e3ec] bg-[#e7f3f8] p-5"><LoaderCircle className="size-5 shrink-0 animate-spin text-[#0b6e99]" /><span><span className="block font-medium text-[#37352f]">{pending === 'topics' ? '正在为你想选题，并检查历史重复…' : pending === 'saving' ? '正在保存你选中的选题…' : pending === 'script' ? '正在写口播和分镜…' : pending === 'memory' ? '正在确认品牌资料…' : '正在换角度，并重新检查重复…'}</span><span className="mt-1 block text-sm text-[#5f5e5a]">这可能需要一点时间，请保持页面打开。</span></span></output>}
     {!session && !contentId && <section className="surface-card space-y-6 sm:!p-7">
-      {!writableAccounts.length ? <EmptyData title="还没有可写脚本的账号" description="先添加一个品牌账号；已有账号请联系负责人分配客户。"><Button nativeButton={false} render={<Link href="/accounts" />}>查看品牌与账号</Button></EmptyData> : <>
+      {!writableAccounts.length ? <EmptyData title="还没有可写脚本的账号" description="请先进入客户详情添加品牌、门店和账号；已有账号请联系负责人分配客户。"><Button nativeButton={false} render={<Link href="/clients" />}>前往客户管理</Button></EmptyData> : <>
         <label htmlFor="writer-account" className="block space-y-2 text-base font-medium">给哪个账号写？<NativeSelect id="writer-account" value={selectedAccountId} disabled={Boolean(pending)} className="h-11 w-full" onChange={(event) => { setAccountId(event.target.value); setDirectionBatch(0); }}>
           {writableAccounts.map((account) => <option key={account.id} value={account.id}>{account.clientName} · {account.accountName}</option>)}
         </NativeSelect></label>
