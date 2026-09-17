@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
 import {
-  Activity, BarChart3, Building2, Camera, Clapperboard, Cpu, History,
+  Activity, BarChart3, Building2, Camera, Clapperboard, Cpu,
   Flame, Gauge, Menu, Settings, ShieldCheck, Sparkles, Users, FilePenLine,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -14,28 +14,19 @@ import { devIdentityDataSchema, roleLabels, type WorkspaceAccess } from '@/lib/a
 import { fetchData, useApiData } from '@/components/contentos/master-data/common';
 import { cn } from '@/lib/utils';
 
-const navigationGroups = [
-  { label: '我的工作', items: [
-    { href: '/', label: '工作台', icon: Gauge, access: null },
-    { href: '/shoots', label: '拍摄任务', icon: Camera, access: 'shoots' },
-  ] },
-  { label: '内容业务', items: [
-    { href: '/clients', label: '客户', icon: Building2, access: 'masterData' },
-    { href: '/contents', label: '内容运营', icon: Clapperboard, access: 'contents' },
-    { href: '/analytics/content', label: '运营数据', icon: BarChart3, access: 'analytics' },
-  ] },
-  { label: 'AI 工具', items: [
-    { href: '/scripts', label: '脚本库', icon: History, access: 'scripts' },
-    { href: '/scripts/new', label: 'AI 写脚本', icon: FilePenLine, access: 'scripts' },
-    { href: '/ai/inspiration', label: '爆款灵感', icon: Flame, access: 'ai' },
-    { href: '/ai', label: 'AI 运营', icon: Sparkles, access: 'ai' },
-  ] },
-  { label: '管理与质量', items: [
-    { href: '/ops', label: '运营中心', icon: Activity, access: 'ops' },
-    { href: '/skills', label: 'AI Skill', icon: Cpu, access: 'skills' },
-    { href: '/team', label: '团队与权限', icon: Users, access: 'team' },
-    { href: '/settings', label: '系统设置', icon: Settings, access: 'settings' },
-  ] },
+const navigationItems = [
+  { href: '/', label: '工作台', icon: Gauge, access: null },
+  { href: '/clients', label: '客户', icon: Building2, access: 'masterData' },
+  { href: '/contents', label: '内容与脚本', icon: Clapperboard, access: 'contents' },
+  { href: '/scripts/new', label: 'AI 写脚本', icon: FilePenLine, access: 'scripts' },
+  { href: '/shoots', label: '拍摄任务', icon: Camera, access: 'shoots' },
+  { href: '/analytics/content', label: '运营数据', icon: BarChart3, access: 'analytics' },
+  { href: '/ai/inspiration', label: '爆款灵感', icon: Flame, access: 'ai' },
+  { href: '/ai', label: 'AI 运营', icon: Sparkles, access: 'ai' },
+  { href: '/ops', label: '运营中心', icon: Activity, access: 'ops' },
+  { href: '/skills', label: 'AI Skill', icon: Cpu, access: 'skills' },
+  { href: '/team', label: '团队与权限', icon: Users, access: 'team' },
+  { href: '/settings', label: '系统设置', icon: Settings, access: 'settings' },
 ] as const;
 
 function ProductMark() {
@@ -49,19 +40,15 @@ function ProductMark() {
 
 function Navigation({ access, onNavigate }: { access?: WorkspaceAccess; onNavigate?: () => void }) {
   const pathname = usePathname();
+  const items = navigationItems.filter(item => item.access === null || access?.[item.access]);
   return (
-    <nav className="space-y-5" aria-label="主导航">
-      {navigationGroups.map(group => {
-        const items = group.items.filter(item => item.access === null || access?.[item.access]);
-        if (!items.length) return null;
-        return <section key={group.label} aria-label={group.label}>
-          <p className="mb-1.5 px-2 text-[11px] font-medium uppercase tracking-[0.08em] text-[#b4b4b0]">{group.label}</p>
-          <div className="space-y-1">{items.map(({ href, label, icon: Icon }) => {
+    <nav className="space-y-1" aria-label="主导航">
+      {items.map(({ href, label, icon: Icon }) => {
             const matchesPath = (candidate: string) => candidate === '/'
               ? pathname === '/'
               : pathname === candidate || pathname.startsWith(`${candidate}/`);
-            const hasMoreSpecificMatch = navigationGroups.some(candidateGroup => candidateGroup.items.some(candidate =>
-              candidate.href !== href && candidate.href.startsWith(`${href}/`) && matchesPath(candidate.href)));
+            const hasMoreSpecificMatch = navigationItems.some(candidate =>
+              candidate.href !== href && candidate.href.startsWith(`${href}/`) && matchesPath(candidate.href));
             const active = matchesPath(href) && !hasMoreSpecificMatch;
             return (
               <Link
@@ -74,9 +61,7 @@ function Navigation({ access, onNavigate }: { access?: WorkspaceAccess; onNaviga
                 <Icon className={cn('size-4 text-[#9b9a97]', active && 'text-[#37352f]')} /><span>{label}</span>
               </Link>
             );
-          })}</div>
-        </section>;
-      })}
+          })}
     </nav>
   );
 }

@@ -40,7 +40,7 @@ import {
   LoadingData,
   useApiData,
 } from './master-data/common';
-import { ContentHeading, ContentNav, formatLocalDate } from './content/common';
+import { ContentHeading, formatLocalDate } from './content/common';
 
 const importStatusLabels = {
   previewed: '已预览',
@@ -145,13 +145,19 @@ export function ContentImportPage() {
         <Button
           variant="outline"
           nativeButton={false}
+          render={<Link href="/contents" />}
+        >
+          内容与脚本
+        </Button>
+        <Button
+          variant="outline"
+          nativeButton={false}
           render={<Link href="/ai/dedup-test" />}
         >
           <FileSearch />
           去重测试
         </Button>
       </ContentHeading>
-      <ContentNav />
       {state.loading ? (
         <LoadingData />
       ) : state.error ? (

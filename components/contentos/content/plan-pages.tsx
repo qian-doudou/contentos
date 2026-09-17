@@ -15,7 +15,7 @@ import {
   contentGoalLabels, contentTypeLabels, monthlyPlanDetailSchema, monthlyPlanListSchema,
 } from '@/lib/content/contracts';
 import { EmptyData, ErrorData, LoadingData, Tags, useApiData } from '@/components/contentos/master-data/common';
-import { ActiveBadge, ContentHeading, ContentNav, periodLabel } from './common';
+import { ActiveBadge, ContentHeading, periodLabel } from './common';
 import { PlanEditorDialog, PlanForm } from './plan-form';
 
 export function PlanListPage() {
@@ -39,9 +39,9 @@ export function PlanListPage() {
   }
   return <div className="space-y-6">
     <ContentHeading title="月度内容计划" description="为每个账号设定月度目标、重点产品和内容类型配比。">
+      <Button variant="outline" nativeButton={false} render={<Link href="/contents" />}>内容与脚本</Button>
       {data?.permissions.canWrite && <Button nativeButton={false} render={<Link href="/contents/plans/new" />}><Plus />新建计划</Button>}
     </ContentHeading>
-    <ContentNav />
     {state.loading ? <LoadingData /> : state.error ? <ErrorData error={state.error} retry={state.reload} /> : data && <>
       <form className="surface-card grid items-end gap-3 sm:grid-cols-2 xl:grid-cols-[2fr_1fr_1fr_1fr_auto_auto]" key={query} onSubmit={filter}>
         <label htmlFor="plan-filter-account" className="space-y-1.5 text-sm">账号<NativeSelect id="plan-filter-account" className="w-full" name="accountId" defaultValue={params.get('accountId') || ''}><option value="">全部账号</option>{data.options.accounts.map(account => <option key={account.id} value={account.id}>{account.clientName} / {account.accountName}</option>)}</NativeSelect></label>
@@ -65,7 +65,7 @@ export function PlanListPage() {
 export function NewPlanPage() {
   const state = useApiData('/api/content-plans?pageSize=1', monthlyPlanListSchema);
   const router = useRouter();
-  return <div className="space-y-6"><ContentHeading title="新建月度计划" description="同一账号每个月份只能建立一份计划。"><Button variant="outline" nativeButton={false} render={<Link href="/contents/plans" />}>返回计划</Button></ContentHeading><ContentNav />
+  return <div className="space-y-6"><ContentHeading title="新建月度计划" description="同一账号每个月份只能建立一份计划。"><Button variant="outline" nativeButton={false} render={<Link href="/contents" />}>内容与脚本</Button><Button variant="outline" nativeButton={false} render={<Link href="/contents/plans" />}>返回计划</Button></ContentHeading>
     {state.loading ? <LoadingData /> : state.error ? <ErrorData error={state.error} retry={state.reload} /> : state.data && (
       state.data.permissions.canWrite ? <section className="surface-card"><PlanForm accounts={state.data.options.accounts} onSaved={id => router.push('/contents/plans/' + id + '?created=1')} /></section>
         : <section className="surface-card"><EmptyData title="无创建权限" description="当前身份没有可管理的客户账号。" /></section>
@@ -84,9 +84,9 @@ export function PlanDetailPage({ id }: { id: string }) {
   return <div className="space-y-6">
     <ContentHeading title={`${periodLabel(plan.year, plan.month)}计划`} description={`${account.clientName} / ${account.brandName} / ${account.accountName}`}>
       <Button variant="outline" nativeButton={false} render={<Link href="/contents/plans" />}>计划列表</Button>
+      <Button variant="outline" nativeButton={false} render={<Link href="/contents" />}>内容与脚本</Button>
       {state.data.permissions.canWrite && <PlanEditorDialog initial={plan} accounts={[account]} onSaved={() => { setNotice('计划已保存'); state.reload(); }} />}
     </ContentHeading>
-    <ContentNav />
     {notice && <output className="block rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</output>}
     <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
       <Card><CardHeader><CardTitle className="text-sm text-slate-500">目标数量</CardTitle></CardHeader><CardContent><p className="text-3xl font-semibold">{plan.plannedContentCount}</p></CardContent></Card>

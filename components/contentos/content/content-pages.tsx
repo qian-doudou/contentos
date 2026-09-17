@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { LayoutDashboard, List, Plus, Sparkles } from 'lucide-react';
+import { CalendarRange, LayoutDashboard, List, Plus, Sparkles } from 'lucide-react';
 import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -15,7 +15,7 @@ import {
   hookTypeLabels, priorityLabels,
 } from '@/lib/content/contracts';
 import { EmptyData, ErrorData, LoadingData, Tags, useApiData } from '@/components/contentos/master-data/common';
-import { ContentHeading, ContentNav, formatLocalDate, periodLabel } from './common';
+import { ContentHeading, formatLocalDate, periodLabel } from './common';
 import { ContentEditorDialog, ContentForm } from './content-form';
 import { ContentWorkflowPanel } from './workflow-panel';
 import { WorkflowBoard, WorkflowStatusBadge } from './workflow-board';
@@ -60,12 +60,12 @@ export function ContentListPage() {
     router.push('/contents?' + next.toString());
   }
   return <div className="space-y-6">
-    <ContentHeading title="内容策划" description="用结构化字段管理选题、角度、钩子、本地元素和发布时间。">
+    <ContentHeading title="内容与脚本" description="在同一个工作台管理选题、脚本版本、审核状态和后续发布流程。">
+      <Button variant="outline" nativeButton={false} render={<Link href="/contents/plans" />}><CalendarRange />月度计划</Button>
       <Button variant="outline" nativeButton={false} render={<Link href="/contents/import" />}>历史导入</Button>
       {data?.permissions.canWrite && <Button nativeButton={false} render={<Link href="/contents/new" />}><Plus />新建内容</Button>}
       {data?.permissions.canWrite && <Button nativeButton={false} render={<Link href="/scripts/new" />}><Sparkles />AI 写脚本</Button>}
     </ContentHeading>
-    <ContentNav />
     {state.loading ? <LoadingData /> : state.error ? <ErrorData error={state.error} retry={state.reload} /> : data && <>
       <form className="surface-card grid items-end gap-3 sm:grid-cols-2 xl:grid-cols-8" key={query} onSubmit={filter}>
         <label htmlFor="content-filter-search" className="space-y-1.5 text-sm">搜索<Input id="content-filter-search" name="search" maxLength={160} placeholder="标题或选题" defaultValue={params.get('search') || ''} /></label>
@@ -79,13 +79,14 @@ export function ContentListPage() {
       </form>
       <section className="surface-card !p-0">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b p-5"><div className="flex flex-wrap items-center gap-3"><h2 className="font-semibold">内容工作台</h2><Badge variant="outline">共 {view === 'kanban' ? (boardState.data?.total ?? data.total) : data.total} 条</Badge>{quickFilterLabel && <Badge className="bg-cyan-50 text-cyan-700" variant="secondary">工作台筛选：{quickFilterLabel}</Badge>}</div><div className="flex gap-2"><Button size="sm" variant={view === 'kanban' ? 'default' : 'outline'} onClick={() => setView('kanban')}><LayoutDashboard />看板</Button><Button size="sm" variant={view === 'table' ? 'default' : 'outline'} onClick={() => setView('table')}><List />表格</Button></div></div>
-        {view === 'kanban' ? boardState.loading ? <div className="p-4"><LoadingData /></div> : boardState.error ? <div className="p-4"><ErrorData error={boardState.error} retry={boardState.reload} /></div> : boardState.data && (boardState.data.total ? <div className="p-4"><WorkflowBoard key={`${boardQuery}:${boardState.data.columns.map(column => `${column.id}:${column.total}:${column.items.map(item => `${item.id}:${item.updatedAt}`).join(',')}`).join('|')}`} data={boardState.data} query={boardQuery} onChanged={() => { boardState.reload(); state.reload(); }} /></div> : <EmptyData title="没有匹配的内容" description="调整筛选条件，或创建第一条结构化内容策划。" />) : data.items.length ? <Table><TableHeader><TableRow><TableHead>内容</TableHead><TableHead>账号 / 月度</TableHead><TableHead>类型 / 目标</TableHead><TableHead>运营</TableHead><TableHead>发布 / 截止</TableHead><TableHead>优先级</TableHead><TableHead>状态</TableHead></TableRow></TableHeader><TableBody>{data.items.map(item => <TableRow key={item.id}>
+        {view === 'kanban' ? boardState.loading ? <div className="p-4"><LoadingData /></div> : boardState.error ? <div className="p-4"><ErrorData error={boardState.error} retry={boardState.reload} /></div> : boardState.data && (boardState.data.total ? <div className="p-4"><WorkflowBoard key={`${boardQuery}:${boardState.data.columns.map(column => `${column.id}:${column.total}:${column.items.map(item => `${item.id}:${item.updatedAt}`).join(',')}`).join('|')}`} data={boardState.data} query={boardQuery} onChanged={() => { boardState.reload(); state.reload(); }} /></div> : <EmptyData title="没有匹配的内容" description="调整筛选条件，或创建第一条内容与脚本。" />) : data.items.length ? <Table><TableHeader><TableRow><TableHead>内容</TableHead><TableHead>脚本</TableHead><TableHead>账号 / 月度</TableHead><TableHead>类型 / 目标</TableHead><TableHead>运营</TableHead><TableHead>发布 / 截止</TableHead><TableHead>优先级</TableHead><TableHead>状态</TableHead></TableRow></TableHeader><TableBody>{data.items.map(item => <TableRow key={item.id}>
           <TableCell className="max-w-80"><Link className="font-medium text-cyan-800 hover:underline" href={'/contents/' + item.id}>{item.title}</Link><p className="mt-1 line-clamp-1 text-xs text-slate-500">{item.topic || '选题未填写'}</p></TableCell>
+          <TableCell>{item.currentScriptVersionId ? <Link className="text-sm font-medium text-cyan-800 hover:underline" href={`/contents/${item.id}#scripts`}>{item.activeApprovedScriptVersionId ? '已批准' : '查看版本'}</Link> : <span className="text-sm text-slate-400">未生成</span>}</TableCell>
           <TableCell><p>{item.accountName}</p><p className="mt-1 text-xs text-slate-500">{item.planYear && item.planMonth ? periodLabel(item.planYear, item.planMonth) : '未归入月度计划'}</p></TableCell>
           <TableCell><Badge variant="secondary">{contentTypeLabels[item.contentType]}</Badge><span className="ml-2 text-sm text-slate-500">{contentGoalLabels[item.contentGoal]}</span></TableCell>
           <TableCell>{item.operatorName}</TableCell><TableCell className="text-xs"><p>{formatLocalDate(item.plannedPublishDate)}</p><p className="mt-1 text-slate-400">{formatLocalDate(item.deadline)}</p></TableCell>
           <TableCell><Badge variant="secondary" className={priorityTone[item.priority]}>{priorityLabels[item.priority]}</Badge></TableCell><TableCell><div className="flex flex-wrap gap-2"><WorkflowStatusBadge status={item.status} />{item.overdue ? <Badge variant="destructive">已逾期</Badge> : item.dueSoon ? <Badge className="bg-amber-50 text-amber-700">临近截止</Badge> : null}{item.isDemo && <Badge variant="outline">演示</Badge>}</div></TableCell>
-        </TableRow>)}</TableBody></Table> : <EmptyData title="没有匹配的内容" description="调整筛选条件，或创建第一条结构化内容策划。" />}
+        </TableRow>)}</TableBody></Table> : <EmptyData title="没有匹配的内容" description="调整筛选条件，或创建第一条内容与脚本。" />}
         {view === 'table' && <div className="flex flex-wrap items-center justify-between gap-3 border-t p-4"><span className="text-sm text-slate-500">第 {data.page} 页</span><div className="flex gap-2"><Button variant="outline" disabled={data.page <= 1} onClick={() => page(data.page - 1)}>上一页</Button><Button variant="outline" disabled={data.page * data.pageSize >= data.total} onClick={() => page(data.page + 1)}>下一页</Button></div></div>}
       </section>
     </>}
@@ -96,7 +97,7 @@ export function NewContentPage() {
   const state = useApiData('/api/contents?pageSize=1', contentListSchema);
   const params = useSearchParams();
   const router = useRouter();
-  return <div className="space-y-6"><ContentHeading title="新建内容策划" description="建立结构化内容档案；脚本正文由独立版本表承载，不写入 Content 主表。"><Button variant="outline" nativeButton={false} render={<Link href="/contents" />}>返回内容</Button></ContentHeading><ContentNav />
+  return <div className="space-y-6"><ContentHeading title="新建内容策划" description="建立结构化内容档案；脚本正文由独立版本表承载，不写入 Content 主表。"><Button variant="outline" nativeButton={false} render={<Link href="/contents" />}>返回内容与脚本</Button></ContentHeading>
     <section className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-cyan-200 bg-cyan-50 p-5"><div><h2 className="font-semibold text-cyan-950">想直接让AI写脚本？</h2><p className="mt-1 text-sm text-cyan-800">不用填写下方表单。选账号和选题，AI自动补齐内容。</p></div><Button nativeButton={false} render={<Link href={`/scripts/new${params.get('accountId') ? `?accountId=${encodeURIComponent(params.get('accountId')!)}` : ''}`} />}><Sparkles />去快捷写脚本</Button></section>
     {state.loading ? <LoadingData /> : state.error ? <ErrorData error={state.error} retry={state.reload} /> : state.data && (
       state.data.permissions.canWrite ? <section className="surface-card"><ContentForm options={state.data.options} defaults={{ accountId: params.get('accountId') || undefined, planId: params.get('planId') || undefined }} onSaved={id => router.push('/contents/' + id + '?created=1')} /></section>
@@ -119,7 +120,7 @@ export function ContentDetailPage({ id }: { id: string }) {
   return <div className="space-y-6">
     <ContentHeading title={item.title} description={`${item.clientName} / ${item.brandName} / ${item.storeName} / ${item.accountName}`}>
       <Button variant="outline" nativeButton={false} render={<Link href="/contents" />}>内容列表</Button>{state.data.permissions.canWrite && <ContentEditorDialog initial={item} options={state.data.options} onSaved={() => { setNotice('内容已保存'); state.reload(); }} />}
-    </ContentHeading><ContentNav />
+    </ContentHeading>
     {notice && <output className="block rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</output>}
     <ScriptApprovalPanel contentId={item.id} onContentChanged={state.reload} />
     <section className="surface-card"><div className="flex flex-wrap items-start justify-between gap-4"><div className="flex flex-wrap gap-2"><Badge>{contentTypeLabels[item.contentType]}</Badge><Badge variant="secondary">{contentGoalLabels[item.contentGoal]}</Badge><Badge variant="secondary" className={priorityTone[item.priority]}>{priorityLabels[item.priority]}</Badge>{item.overdue ? <Badge variant="destructive">已逾期</Badge> : item.dueSoon ? <Badge className="bg-amber-50 text-amber-700">临近截止</Badge> : null}</div><div className="flex gap-2"><WorkflowStatusBadge status={item.status} />{item.isDemo && <Badge variant="outline">演示</Badge>}</div></div>

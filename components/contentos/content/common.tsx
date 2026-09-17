@@ -1,18 +1,6 @@
 'use client';
 
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
-import { cn } from '@/lib/utils';
-
-export function ContentNav() {
-  const pathname = usePathname();
-  return <nav aria-label="内容运营子导航" className="flex w-fit gap-1 rounded-xl border bg-white p-1">
-    <Link className={cn('rounded-lg px-4 py-2 text-sm font-medium text-slate-500', !pathname.startsWith('/contents/plans') && !pathname.startsWith('/contents/import') && 'bg-slate-900 text-white')} href="/contents">内容列表</Link>
-    <Link className={cn('rounded-lg px-4 py-2 text-sm font-medium text-slate-500', pathname.startsWith('/contents/plans') && 'bg-slate-900 text-white')} href="/contents/plans">月度计划</Link>
-    <Link className={cn('rounded-lg px-4 py-2 text-sm font-medium text-slate-500', pathname.startsWith('/contents/import') && 'bg-slate-900 text-white')} href="/contents/import">历史导入</Link>
-  </nav>;
-}
 
 export function ContentHeading({ title, description, children }: { title: string; description: string; children?: React.ReactNode }) {
   return <header className="flex flex-wrap items-end justify-between gap-4"><div><p className="eyebrow">内容运营</p><h1 className="page-title">{title}</h1><p className="page-description">{description}</p></div><div className="flex flex-wrap gap-2">{children}</div></header>;
