@@ -64,13 +64,19 @@ function percentage(value: number) {
   return `${Math.round(value * 100)}%`;
 }
 
+function formText(form: FormData, key: string) {
+  const value = form.get(key);
+  return typeof value === 'string' ? value : '';
+}
+
 export function ContentImportPage({ embedded = false }: { embedded?: boolean } = {}) {
   const state = useApiData('/api/contents/import', contentImportPageDataSchema);
   const [preview, setPreview] = useState<ContentImportPreview | null>(null);
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState('');
+  const [entryMode, setEntryMode] = useState<'manual' | 'file'>('manual');
 
-  async function previewFile(
+  async function previewImport(
     event: React.SyntheticEvent<HTMLFormElement, SubmitEvent>,
   ) {
     event.preventDefault();
@@ -78,11 +84,34 @@ export function ContentImportPage({ embedded = false }: { embedded?: boolean } =
     setMessage('');
     setPreview(null);
     const form = new FormData(event.currentTarget);
-    const file = form.get('file');
     try {
-      if (!(file instanceof File) || file.size === 0)
-        throw new Error('请选择 CSV 或 JSON 文件');
-      if (file.size > 1_000_000) throw new Error('单次导入文件不得超过 1 MB');
+      let format: 'csv' | 'json';
+      let dedupStrategy: 'external_id' | 'title_published_at' | 'canonical';
+      let payload: string;
+      if (entryMode === 'manual') {
+        const publishedAt = formText(form, 'published_at');
+        format = 'json';
+        dedupStrategy = 'canonical';
+        payload = JSON.stringify([{
+          account_id: formText(form, 'account_id'),
+          title: formText(form, 'title'),
+          content_type: formText(form, 'content_type') || null,
+          content_goal: formText(form, 'content_goal') || null,
+          topic: formText(form, 'topic') || null,
+          angle: formText(form, 'angle') || null,
+          hook_text: formText(form, 'hook_text') || null,
+          core_message: formText(form, 'core_message') || null,
+          published_at: publishedAt ? new Date(publishedAt).toISOString() : null,
+        }]);
+      } else {
+        const file = form.get('file');
+        if (!(file instanceof File) || file.size === 0)
+          throw new Error('请选择 CSV 或 JSON 文件');
+        if (file.size > 1_000_000) throw new Error('单次导入文件不得超过 1 MB');
+        format = form.get('format') as 'csv' | 'json';
+        dedupStrategy = form.get('dedupStrategy') as 'external_id' | 'title_published_at' | 'canonical';
+        payload = await file.text();
+      }
       const result = await fetchData(
         '/api/contents/import/preview',
         contentImportPreviewSchema,
@@ -90,9 +119,9 @@ export function ContentImportPage({ embedded = false }: { embedded?: boolean } =
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            format: form.get('format'),
-            dedupStrategy: form.get('dedupStrategy'),
-            payload: await file.text(),
+            format,
+            dedupStrategy,
+            payload,
           }),
         },
       );
@@ -138,9 +167,9 @@ export function ContentImportPage({ embedded = false }: { embedded?: boolean } =
 
   return (
     <div className="space-y-6">
-      {embedded ? <section className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xl font-semibold">历史导入</h2><p className="mt-1 text-sm text-slate-500">CSV / JSON 先预览校验，再写入 SQLite 并建立内容索引。</p></div><Button variant="outline" nativeButton={false} render={<Link href="/ai/dedup-test" />}><FileSearch />去重测试</Button></section> : <ContentHeading
+      {embedded ? <section className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xl font-semibold">历史导入</h2><p className="mt-1 text-sm text-slate-500">支持手动录入和 CSV / JSON 批量导入，确认后建立内容索引。</p></div><Button variant="outline" nativeButton={false} render={<Link href="/ai/dedup-test" />}><FileSearch />去重测试</Button></section> : <ContentHeading
         title="历史内容导入"
-        description="CSV / JSON 先预览校验，再写入 SQLite 并建立可失效的内容索引。"
+        description="支持手动录入和 CSV / JSON 批量导入；先预览校验，再写入并建立内容索引。"
       >
         <Button
           variant="outline"
@@ -165,15 +194,30 @@ export function ContentImportPage({ embedded = false }: { embedded?: boolean } =
       ) : state.data ? (
         <>
           <section className="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(300px,0.6fr)]">
-            <form className="surface-card space-y-5" onSubmit={previewFile}>
+            <form className="surface-card space-y-5" key={entryMode} onSubmit={previewImport}>
               <div>
-                <h2 className="text-lg font-semibold">选择文件并预览</h2>
+                <h2 className="text-lg font-semibold">录入历史内容</h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  单次最多 200 行、1 MB；预览批次不会创建 Content。
+                  手动填写或批量上传都先预览校验，确认后才会写入内容库。
                 </p>
               </div>
+              <div aria-label="历史内容录入方式" className="inline-flex rounded-lg bg-[#f1f1ef] p-1" role="tablist">
+                <button aria-selected={entryMode === 'manual'} className={entryMode === 'manual' ? 'rounded-md bg-white px-4 py-2 text-sm font-medium shadow-sm' : 'rounded-md px-4 py-2 text-sm text-slate-500'} onClick={() => { setEntryMode('manual'); setPreview(null); setMessage(''); }} role="tab" type="button">手动录入</button>
+                <button aria-selected={entryMode === 'file'} className={entryMode === 'file' ? 'rounded-md bg-white px-4 py-2 text-sm font-medium shadow-sm' : 'rounded-md px-4 py-2 text-sm text-slate-500'} onClick={() => { setEntryMode('file'); setPreview(null); setMessage(''); }} role="tab" type="button">文件导入</button>
+              </div>
               {state.data.permissions.canImport ? (
-                <fieldset
+                entryMode === 'manual' ? <fieldset disabled={pending} className="grid gap-4 sm:grid-cols-2">
+                  <label htmlFor="manual-account" className="space-y-1.5 text-sm sm:col-span-2">账号 <span className="text-rose-600">*</span><NativeSelect id="manual-account" name="account_id" className="w-full" required><option value="">请选择账号</option>{state.data.accounts.filter(account => account.canWrite).map(account => <option value={account.id} key={account.id}>{account.clientName} · {account.accountName}</option>)}</NativeSelect></label>
+                  <label htmlFor="manual-title" className="space-y-1.5 text-sm sm:col-span-2">标题 <span className="text-rose-600">*</span><Input id="manual-title" name="title" maxLength={160} required placeholder="例：老板教你判断羊肉新不新鲜" /></label>
+                  <label htmlFor="manual-content-type" className="space-y-1.5 text-sm">内容类型<NativeSelect id="manual-content-type" name="content_type" className="w-full"><option value="">暂不填写</option>{contentTypes.map(value => <option value={value} key={value}>{contentTypeLabels[value]}</option>)}</NativeSelect></label>
+                  <label htmlFor="manual-content-goal" className="space-y-1.5 text-sm">内容目标<NativeSelect id="manual-content-goal" name="content_goal" className="w-full"><option value="">暂不填写</option>{contentGoals.map(value => <option value={value} key={value}>{contentGoalLabels[value]}</option>)}</NativeSelect></label>
+                  <label htmlFor="manual-topic" className="space-y-1.5 text-sm sm:col-span-2">选题<Input id="manual-topic" name="topic" maxLength={300} placeholder="这条视频主要讲什么" /></label>
+                  <label htmlFor="manual-angle" className="space-y-1.5 text-sm sm:col-span-2">切入角度<Textarea id="manual-angle" name="angle" maxLength={5000} placeholder="从哪个角度切入" /></label>
+                  <label htmlFor="manual-hook" className="space-y-1.5 text-sm sm:col-span-2">开头钩子<Textarea id="manual-hook" name="hook_text" maxLength={5000} placeholder="视频开头说什么" /></label>
+                  <label htmlFor="manual-core-message" className="space-y-1.5 text-sm sm:col-span-2">核心信息<Textarea id="manual-core-message" name="core_message" maxLength={5000} placeholder="希望观众最终记住什么" /></label>
+                  <label htmlFor="manual-published-at" className="space-y-1.5 text-sm sm:col-span-2">发布时间<Input id="manual-published-at" name="published_at" type="datetime-local" /></label>
+                  <Button className="sm:col-span-2" type="submit">{pending ? <LoaderCircle className="animate-spin" /> : <CheckCircle2 />}预览并检查重复</Button>
+                </fieldset> : <fieldset
                   disabled={pending}
                   className="grid gap-4 sm:grid-cols-2"
                 >
@@ -243,17 +287,16 @@ export function ContentImportPage({ embedded = false }: { embedded?: boolean } =
             </form>
             <aside className="surface-card space-y-4">
               <div>
-                <h2 className="font-semibold">字段约定</h2>
+                <h2 className="font-semibold">{entryMode === 'manual' ? '录入说明' : '字段约定'}</h2>
                 <p className="mt-1 text-sm leading-6 text-slate-500">
-                  JSON 根节点为数组；CSV
-                  首行使用下列英文字段。枚举值也使用稳定英文值。
+                  {entryMode === 'manual' ? '标题和账号为必填项；其他字段越完整，后续历史去重和 AI 上下文越准确。' : <>JSON 根节点为数组；CSV 首行使用下列英文字段。枚举值也使用稳定英文值。</>}
                 </p>
               </div>
-              <pre className="overflow-auto rounded-xl bg-slate-950 p-4 text-xs leading-6 text-slate-100">
+              {entryMode === 'file' && <pre className="overflow-auto rounded-xl bg-slate-950 p-4 text-xs leading-6 text-slate-100">
                 account_id,account_identifier,external_id,title,{`\n`}
                 content_type,content_goal,topic,angle,hook_text,{`\n`}
                 core_message,published_at
-              </pre>
+              </pre>}
               <div>
                 <p className="text-sm font-medium">可解析账号</p>
                 <div className="mt-2 space-y-2">
