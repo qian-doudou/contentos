@@ -49,7 +49,7 @@ function permissionDraft(member?: TeamMember): PermissionDraft {
 
 function workspaceNames(access: WorkspaceAccess) {
   return Object.entries(access)
-    .filter(([key, allowed]) => allowed && key !== 'evals')
+    .filter(([key, allowed]) => allowed && key !== 'evals' && key !== 'edits')
     .map(([key]) => workspaceLabels[key as keyof WorkspaceAccess]);
 }
 

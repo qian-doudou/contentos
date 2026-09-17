@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import {
   Bot, CalendarClock, Camera, ChevronRight, Clapperboard,
-  Clock3, FileCheck2, Film, RefreshCw, Rocket, ShieldAlert,
+  Clock3, FileCheck2, RefreshCw, Rocket, ShieldAlert,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -80,7 +80,6 @@ export function Dashboard() {
     { label: '待写脚本', value: counts.scriptsToWrite, helper: '选题和待完善的草稿', icon: Clapperboard, href: `/contents?statuses=${scriptDraftStatuses.join(',')}`, access: 'contents' },
     { label: '待审核', value: counts.pendingApproval, helper: '脚本或成片审核', icon: FileCheck2, href: `/contents?statuses=${approvalStatuses.join(',')}`, access: 'contents' },
     { label: '今日拍摄', value: counts.todayShoots, helper: '上海自然日排期', icon: Camera, href: '/shoots', access: 'shoots' },
-    { label: '待剪辑', value: counts.pendingEdits, helper: '已拍 / 剪辑中 / 返修', icon: Film, href: '/edits', access: 'edits' },
     { label: '待发布', value: counts.readyToPublish, helper: '已批准成片', icon: Rocket, href: '/contents?status=READY_TO_PUBLISH', access: 'contents' },
     { label: '即将延期', value: counts.dueSoon, helper: '未来 48 小时内', icon: Clock3, href: '/contents?deadlineState=dueSoon', access: 'contents' },
     { label: '高风险客户', value: counts.highRiskClients, helper: '履约显著落后', icon: ShieldAlert, href: '#high-risk-clients', access: 'masterData' },

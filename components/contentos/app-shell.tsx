@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
 import {
-  Activity, BarChart3, Building2, Camera, Clapperboard, Cpu, Film, History,
+  Activity, BarChart3, Building2, Camera, Clapperboard, Cpu, History,
   Flame, Gauge, Menu, Settings, ShieldCheck, Sparkles, Users, FilePenLine,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -18,7 +18,6 @@ const navigationGroups = [
   { label: '我的工作', items: [
     { href: '/', label: '工作台', icon: Gauge, access: null },
     { href: '/shoots', label: '拍摄任务', icon: Camera, access: 'shoots' },
-    { href: '/edits', label: '剪辑任务', icon: Film, access: 'edits' },
   ] },
   { label: '内容业务', items: [
     { href: '/clients', label: '客户', icon: Building2, access: 'masterData' },
