@@ -25,7 +25,7 @@ const runTone = {
 } as const;
 
 const primaryActions = [
-  { href: '/scripts/new', title: '写一条新脚本', description: '选择账号，由 AI 推荐3组方向；确认后自动生成口播和分镜。', action: '开始写脚本', icon: Sparkles, featured: true },
+  { href: '/scripts/new', title: '脚本生成', description: '选择账号，由 AI 推荐3组方向；确认后自动生成口播和分镜。', action: '开始生成', icon: Sparkles, featured: true },
   { href: '/contents', title: '继续已有内容', description: '在内容与脚本工作台继续修改、提交审核或查看历史版本。', action: '打开内容与脚本', icon: BookOpenText, featured: false },
   { href: '/ai/planner', title: '批量规划选题', description: '按月度计划缺口生成候选，经过历史去重后再选择保存。', action: '进入策划', icon: Lightbulb, featured: false },
   { href: '/ai/reviews', title: '复盘内容表现', description: '程序先计算真实指标，AI再解释规律并生成下一周期策略。', action: '开始复盘', icon: BrainCircuit, featured: false },
@@ -59,12 +59,12 @@ export function AiHubPage() {
     ? planner.data.plannerPointCost + planner.data.scriptPointCost : null;
 
   return <div className="space-y-7">
-    <header className="flex flex-wrap items-end justify-between gap-4"><div><p className="eyebrow">AI WORKBENCH</p><h1 className="page-title">AI 运营中心</h1><p className="page-description">先看当前状态和待处理事项，再直接进入脚本、策划或复盘。</p></div><div className="flex flex-wrap gap-2"><Badge variant="outline"><Sparkles />{modeLabel}</Badge><Button nativeButton={false} render={<Link href="/scripts/new" />}><FilePenLine />写新脚本</Button></div></header>
+    <header className="flex flex-wrap items-end justify-between gap-4"><div><p className="eyebrow">AI WORKBENCH</p><h1 className="page-title">AI 运营中心</h1><p className="page-description">先看当前状态和待处理事项，再直接进入脚本、策划或复盘。</p></div><div className="flex flex-wrap gap-2"><Badge variant="outline"><Sparkles />{modeLabel}</Badge><Button nativeButton={false} render={<Link href="/scripts/new" />}><FilePenLine />脚本生成</Button></div></header>
 
     <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
       <MetricCard label="可用 AI 积分" value={planner.data.remainingPoints} helper={estimatedGenerationCost === null ? '生成费用尚未配置' : `完整生成一条约 ${estimatedGenerationCost} 积分`} href="/settings/ai" icon={Sparkles} />
       <MetricCard label="可创作账号" value={writableAccounts.length} helper={`${plannedAccounts.length} 个账号已关联当月计划`} href="/clients" icon={ListChecks} />
-      <MetricCard label="待写脚本" value={workbench.scriptsToWrite} helper="已有选题或需要继续完善的脚本" href="/contents?statuses=IDEA,SCRIPTING" icon={FilePenLine} />
+      <MetricCard label="待生成脚本" value={workbench.scriptsToWrite} helper="已有选题或需要继续完善的脚本" href="/contents?statuses=IDEA,SCRIPTING" icon={FilePenLine} />
       <MetricCard label="待审核" value={workbench.pendingApproval} helper="等待处理的脚本或成片审核" href="/contents?statuses=WAITING_APPROVAL,WAITING_REVIEW" icon={Clock3} />
     </section>
 

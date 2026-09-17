@@ -22,7 +22,7 @@ const navigationItems = [
   { href: '/', label: '工作台', icon: Gauge, access: null },
   { href: '/clients', label: '客户', icon: Building2, access: 'masterData' },
   { href: '/contents', label: '内容与脚本', icon: Clapperboard, access: 'contents' },
-  { href: '/scripts/new', label: 'AI 写脚本', icon: FilePenLine, access: 'scripts' },
+  { href: '/scripts/new', label: '脚本生成', icon: FilePenLine, access: 'scripts' },
   { href: '/shoots', label: '拍摄任务', icon: Camera, access: 'shoots' },
   { href: '/analytics/content', label: '运营数据', icon: BarChart3, access: 'analytics' },
   { href: '/ai/inspiration', label: '爆款灵感', icon: Flame, access: 'ai' },

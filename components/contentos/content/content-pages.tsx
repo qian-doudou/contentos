@@ -44,7 +44,7 @@ export function ContentListPage() {
   const [view, setView] = useState<'kanban' | 'table'>('kanban');
   const [section, setSection] = useState<'contents' | 'plans' | 'import'>('contents');
   const groupedStatuses = params.get('statuses');
-  const quickFilterLabel = groupedStatuses === scriptDraftStatuses.join(',') ? '待写脚本'
+  const quickFilterLabel = groupedStatuses === scriptDraftStatuses.join(',') ? '待生成脚本'
     : groupedStatuses === approvalStatuses.join(',') ? '待审核'
       : params.get('deadlineState') === 'dueSoon' ? '即将延期' : null;
   function filter(event: React.SyntheticEvent<HTMLFormElement, SubmitEvent>) {
@@ -65,7 +65,7 @@ export function ContentListPage() {
   return <div className="space-y-6">
     <ContentHeading title="内容与脚本" description="在同一个工作台管理选题、脚本版本、审核状态和后续发布流程。">
       {data?.permissions.canWrite && <Button nativeButton={false} render={<Link href="/contents/new" />}><Plus />新建内容</Button>}
-      {data?.permissions.canWrite && <Button nativeButton={false} render={<Link href="/scripts/new" />}><Sparkles />AI 写脚本</Button>}
+      {data?.permissions.canWrite && <Button nativeButton={false} render={<Link href="/scripts/new" />}><Sparkles />脚本生成</Button>}
     </ContentHeading>
     <div aria-label="内容工作区切换" className="inline-flex rounded-xl border border-[#e9e9e7] bg-white p-1" role="tablist">
       {([
@@ -106,7 +106,7 @@ export function NewContentPage() {
   const params = useSearchParams();
   const router = useRouter();
   return <div className="space-y-6"><ContentHeading title="新建内容策划" description="建立结构化内容档案；脚本正文由独立版本表承载，不写入 Content 主表。"><Button variant="outline" nativeButton={false} render={<Link href="/contents" />}>返回内容与脚本</Button></ContentHeading>
-    <section className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-cyan-200 bg-cyan-50 p-5"><div><h2 className="font-semibold text-cyan-950">想直接让AI写脚本？</h2><p className="mt-1 text-sm text-cyan-800">不用填写下方表单。选账号和选题，AI自动补齐内容。</p></div><Button nativeButton={false} render={<Link href={`/scripts/new${params.get('accountId') ? `?accountId=${encodeURIComponent(params.get('accountId')!)}` : ''}`} />}><Sparkles />去快捷写脚本</Button></section>
+    <section className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-cyan-200 bg-cyan-50 p-5"><div><h2 className="font-semibold text-cyan-950">想直接生成脚本？</h2><p className="mt-1 text-sm text-cyan-800">不用填写下方表单。选账号和选题，AI自动补齐内容。</p></div><Button nativeButton={false} render={<Link href={`/scripts/new${params.get('accountId') ? `?accountId=${encodeURIComponent(params.get('accountId')!)}` : ''}`} />}><Sparkles />去生成脚本</Button></section>
     {state.loading ? <LoadingData /> : state.error ? <ErrorData error={state.error} retry={state.reload} /> : state.data && (
       state.data.permissions.canWrite ? <section className="surface-card"><ContentForm options={state.data.options} defaults={{ accountId: params.get('accountId') || undefined, planId: params.get('planId') || undefined }} onSaved={id => router.push('/contents/' + id + '?created=1')} /></section>
         : <section className="surface-card"><EmptyData title="无创建权限" description="当前身份没有可管理的客户账号。" /></section>

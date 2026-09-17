@@ -27,7 +27,7 @@ const roleTone: Record<string, string> = {
   photographer: 'bg-amber-50 text-amber-700', editor: 'bg-fuchsia-50 text-fuchsia-700', viewer: 'bg-slate-100 text-slate-600',
 };
 const workspaceLabels: Record<keyof WorkspaceAccess, string> = {
-  scripts: 'AI 写脚本', masterData: '客户与账号', contents: '内容运营', shoots: '拍摄管理', edits: '剪辑审核',
+  scripts: '脚本生成', masterData: '客户与账号', contents: '内容运营', shoots: '拍摄管理', edits: '剪辑审核',
   ai: 'AI 运营', analytics: '运营数据', ops: '运营中心', skills: 'AI Skill', evals: '内部质量工具', team: '团队', settings: '系统设置',
 };
 

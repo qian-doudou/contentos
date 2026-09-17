@@ -72,7 +72,7 @@ export function InspirationPage() {
     : '/scripts/new';
 
   return <div className="space-y-6">
-    <header className="flex flex-wrap items-end justify-between gap-4"><div><p className="eyebrow">AI 工具 / 公开内容参考</p><h1 className="page-title">爆款灵感库</h1><p className="page-description">搜索近期高播放内容，选择值得借鉴的结构和表达，再带入 AI 写脚本。</p></div><Button variant="outline" nativeButton={false} render={<Link href={directWriterHref} />}>直接写脚本<ArrowRight /></Button></header>
+    <header className="flex flex-wrap items-end justify-between gap-4"><div><p className="eyebrow">AI 工具 / 公开内容参考</p><h1 className="page-title">爆款灵感库</h1><p className="page-description">搜索近期高播放内容，选择值得借鉴的结构和表达，再带入脚本生成。</p></div><Button variant="outline" nativeButton={false} render={<Link href={directWriterHref} />}>直接生成脚本<ArrowRight /></Button></header>
     <form className="surface-card grid items-end gap-4 md:grid-cols-[minmax(16rem,1fr)_10rem_9rem_auto]" onSubmit={search}>
       <label className="space-y-1.5 text-sm" htmlFor="inspiration-query">搜索关键词<Input id="inspiration-query" value={query} onChange={event => setQuery(event.target.value)} maxLength={100} placeholder="例：上海探店、宠物医院科普" /></label>
       <label className="space-y-1.5 text-sm" htmlFor="inspiration-range">发布时间<NativeSelect id="inspiration-range" className="w-full" value={String(publishedWithinDays)} onChange={event => setPublishedWithinDays(Number(event.target.value))}><option value="7">最近 7 天</option><option value="30">最近 30 天</option><option value="90">最近 90 天</option><option value="365">最近一年</option></NativeSelect></label>
@@ -93,7 +93,7 @@ export function InspirationPage() {
           <div className="mt-auto flex flex-wrap items-center justify-between gap-3 border-t pt-4"><p className="text-xs text-slate-500">播放 {metric(item.views)} · 点赞 {metric(item.likes)} · 评论 {metric(item.comments)}</p><Button size="sm" variant="outline" nativeButton={false} render={<a aria-label={`查看来源：${item.title}`} href={item.sourceUrl} target="_blank" rel="noreferrer" />}>查看来源<ExternalLink /></Button></div>
         </article>;
       })}</section> : <div className="surface-card text-center text-sm text-slate-500">没有找到符合条件的公开内容，请扩大时间范围或更换关键词。</div>}
-      {result.items.length > 0 && <div className="sticky bottom-4 flex flex-wrap items-center justify-between gap-4 rounded-xl border bg-white/95 p-4 shadow-lg backdrop-blur"><p className="text-sm text-slate-600">选择 1–5 条，只提取结构、角度和公开摘要作为灵感。</p><Button disabled={!selected.length} onClick={useReferences}><Sparkles />{selected.length ? `带 ${selected.length} 条参考去写脚本` : '选择参考后去写脚本'}<ArrowRight /></Button></div>}
+      {result.items.length > 0 && <div className="sticky bottom-4 flex flex-wrap items-center justify-between gap-4 rounded-xl border bg-white/95 p-4 shadow-lg backdrop-blur"><p className="text-sm text-slate-600">选择 1–5 条，只提取结构、角度和公开摘要作为灵感。</p><Button disabled={!selected.length} onClick={useReferences}><Sparkles />{selected.length ? `带 ${selected.length} 条参考生成脚本` : '选择参考后生成脚本'}<ArrowRight /></Button></div>}
     </>}
   </div>;
 }

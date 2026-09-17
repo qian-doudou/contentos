@@ -14,7 +14,7 @@ export function AccountDetailPage({ id }: { id: string }) {
   return <div className="space-y-6">
     <PageHeading title={account.accountName} description={`抖音 · ${accountTypeLabels[account.accountType]} · ${store.city || '城市未填写'}`}>
       <Button variant="outline" nativeButton={false} render={<Link href={`/clients/${client.id}`} />}>返回客户详情</Button>
-      <Button nativeButton={false} render={<Link href={`/scripts/new?accountId=${account.id}`} />}>为此账号写脚本</Button>
+      <Button nativeButton={false} render={<Link href={`/scripts/new?accountId=${account.id}`} />}>为此账号生成脚本</Button>
     </PageHeading>
     <div className="space-y-6">
         <section className="surface-card space-y-5">

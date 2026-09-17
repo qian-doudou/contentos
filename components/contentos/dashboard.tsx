@@ -77,7 +77,7 @@ export function Dashboard() {
   const counts = data.workbench.counts;
   const cards = [
     { label: '今日待办', value: counts.todayTodo, helper: '按当前身份去重后的行动项', icon: CalendarClock, href: '#today-actions', access: null },
-    { label: '待写脚本', value: counts.scriptsToWrite, helper: '选题和待完善的草稿', icon: Clapperboard, href: `/contents?statuses=${scriptDraftStatuses.join(',')}`, access: 'contents' },
+    { label: '待生成脚本', value: counts.scriptsToWrite, helper: '选题和待完善的草稿', icon: Clapperboard, href: `/contents?statuses=${scriptDraftStatuses.join(',')}`, access: 'contents' },
     { label: '待审核', value: counts.pendingApproval, helper: '脚本或成片审核', icon: FileCheck2, href: `/contents?statuses=${approvalStatuses.join(',')}`, access: 'contents' },
     { label: '今日拍摄', value: counts.todayShoots, helper: '上海自然日排期', icon: Camera, href: '/shoots', access: 'shoots' },
     { label: '待发布', value: counts.readyToPublish, helper: '已批准成片', icon: Rocket, href: '/contents?status=READY_TO_PUBLISH', access: 'contents' },
@@ -94,7 +94,7 @@ export function Dashboard() {
     {notice && <div aria-live="polite" className="rounded-md border border-[#e9e9e7] bg-[#f7f7f5] px-4 py-3 text-sm text-[#37352f]">{notice}</div>}
     {scriptRole && <ScriptStartCard />}
     <details className="rounded-lg border border-[#e9e9e7] bg-white p-4">
-      <summary className="cursor-pointer text-sm font-medium text-[#787774]">业务进度概览 · {counts.scriptsToWrite} 条待写脚本，{counts.pendingApproval} 项待审核</summary>
+      <summary className="cursor-pointer text-sm font-medium text-[#787774]">业务进度概览 · {counts.scriptsToWrite} 条待生成脚本，{counts.pendingApproval} 项待审核</summary>
     <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
       {visibleCards.map(({ label, value, helper, icon: Icon, href }) => <Link className="block rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2383e2]/35" href={href} key={label}><Card className="h-full transition hover:border-[#d3d1cb]"><CardHeader><CardDescription>{label}</CardDescription><CardTitle className="text-3xl tabular-nums">{value}</CardTitle><CardAction><span className="card-icon"><Icon /></span></CardAction></CardHeader><CardContent><p className="text-sm text-[#787774]">{helper}</p></CardContent></Card></Link>)}
     </section>
