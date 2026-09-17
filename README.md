@@ -2,8 +2,6 @@
 
 ContentOS 是面向本地生活短视频代运营团队的 AI 内容运营与项目管理平台。当前完成第十七阶段最终 MVP 联调：从客户主数据、Memory、月计划、历史召回、AI Planner、脚本审核、拍摄、剪辑、发布、Performance 到策略复盘的主链已通过跨服务集成测试；Production Run 到评分、Bad Case、Prompt Draft、Diff、A/B、人工应用和新版本 Run 追踪的质量链同步打通。
 
-产品边界仍是本地 MVP：没有真实认证、抖音 API、自动发布、自动同步 GMV、支付、视频生成或自动剪辑。Demo 数据和指标均以 `is_demo=true` 与生产数据区分。
-
 ## 本地运行
 
 要求 Node.js `>=22.13.0`。
