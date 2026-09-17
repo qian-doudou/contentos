@@ -50,7 +50,7 @@ const modelProfileLabels = {
 const runTypeLabels = {
   production: '正式 Run',
   test: 'Test Run',
-  eval: 'Eval Run',
+  eval: '内部质量运行',
 } as const;
 const runStatusLabels = {
   queued: '排队中',
@@ -271,11 +271,8 @@ function SkillEditor({
       <div>
         <h2 className="text-lg font-semibold">版本化配置</h2>
         <p className="mt-1 text-sm text-slate-500">
-          元数据和 Schema 保存会新建快照；生产 Prompt 必须经过质量闭环。
+          元数据和 Schema 保存会新建快照；生产 Prompt 变更由内部质量流程审核后发布。
         </p>
-        <Button className="mt-3" size="sm" variant="outline" nativeButton={false} render={<Link href="/evals" />}>
-          到评测中心改进 Prompt
-        </Button>
       </div>
       <fieldset disabled={pending} className="grid gap-4 lg:grid-cols-2">
         <label htmlFor="skill-name" className="space-y-1.5 text-sm">
@@ -415,7 +412,7 @@ function SkillHistory({
     <section className="surface-card">
       <h2 className="text-lg font-semibold">版本历史</h2>
       <p className="mt-1 text-sm text-slate-500">
-        历史快照永不删除；使用旧 Prompt 也必须在评测中心完成 A/B 与人工确认。
+        历史快照永不删除；使用旧 Prompt 也必须经过内部质量验证与人工确认。
       </p>
       <ol className="mt-5 space-y-3">
         {data.versions.map((version) => (
@@ -851,7 +848,7 @@ export function RunsPage() {
     <div className="space-y-6">
       <Heading
         title="Run 追踪"
-        description="区分 Production、Test 与 Eval，查看 Step、usage、成本和计费 Points。"
+        description="区分正式、测试与内部质量运行，查看 Step、usage、成本和计费 Points。"
       >
         <Button variant="outline" nativeButton={false} render={<Link href="/ops" />}>运营中心</Button>
         <Button variant="outline" nativeButton={false} render={<Link href="/ops/ai-cost" />}>AI 成本</Button>

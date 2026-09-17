@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
 import {
-  Activity, BarChart3, Building2, Camera, Clapperboard, Cpu, FileCheck2, Film, History,
+  Activity, BarChart3, Building2, Camera, Clapperboard, Cpu, Film, History,
   Flame, Gauge, Menu, Settings, ShieldCheck, Sparkles, Users, FilePenLine,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -34,7 +34,6 @@ const navigationGroups = [
   { label: '管理与质量', items: [
     { href: '/ops', label: '运营中心', icon: Activity, access: 'ops' },
     { href: '/skills', label: 'AI Skill', icon: Cpu, access: 'skills' },
-    { href: '/evals', label: '评测中心', icon: FileCheck2, access: 'evals' },
     { href: '/team', label: '团队与权限', icon: Users, access: 'team' },
     { href: '/settings', label: '系统设置', icon: Settings, access: 'settings' },
   ] },

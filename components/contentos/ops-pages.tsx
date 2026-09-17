@@ -94,7 +94,7 @@ function QuotaCard({ quota }: { quota: NonNullable<ReturnType<typeof opsOverview
         <Progress value={quota.usageRate * 100}><ProgressLabel>{quota.usedPoints} / {quota.quotaPoints}</ProgressLabel><ProgressValue>{() => `${quota.remainingPoints} 剩余`}</ProgressValue></Progress>
         <p className="text-xs leading-5 text-slate-500">
           {quota.billedProductionBlocked ? '100%：新的收费 Production Run 已由服务端禁止。' : '达到 70% / 90% / 100% 时分级预警。'}
-          {quota.adminTestEvalAllowed ? ' 管理员仍可运行 Test/Eval。' : ' 当前设置同时禁止管理员 Test/Eval。'}
+          {quota.adminTestEvalAllowed ? ' 管理员仍可运行内部测试任务。' : ' 当前设置同时禁止管理员内部测试任务。'}
         </p>
       </CardContent>
     </Card>
@@ -142,8 +142,8 @@ function ConfigDialog({ value, reload }: { value: OpsConfig; reload: () => void 
           <label htmlFor="ops-month-end-days" className="space-y-1.5 text-sm">接近月底天数<Input id="ops-month-end-days" name="nearMonthEndDays" type="number" min="0" max="15" defaultValue={value.deliveryRisk.nearMonthEndDays} required /></label>
           <label htmlFor="ops-remaining-count" className="space-y-1.5 text-sm">月底高风险剩余条数<Input id="ops-remaining-count" name="nearMonthEndRemainingCount" type="number" min="1" max="1000" defaultValue={value.deliveryRisk.nearMonthEndRemainingCount} required /></label>
           <div className="flex items-start gap-3 rounded-xl border p-3 text-sm sm:col-span-2">
-            <input aria-label="额度耗尽后允许管理员 Test/Eval" id="ops-admin-test-eval" className="mt-1 size-4" name="allowAdminTestEvalAtQuotaLimit" type="checkbox" defaultChecked={value.allowAdminTestEvalAtQuotaLimit} />
-            <div><b className="block">额度耗尽后允许管理员 Test/Eval</b><p className="mt-1 text-xs leading-5 text-slate-500">只适用于 owner/admin 且不扣正式 Points；Operator 仍会被服务端阻止。</p></div>
+            <input aria-label="额度耗尽后允许管理员内部测试" id="ops-admin-test-eval" className="mt-1 size-4" name="allowAdminTestEvalAtQuotaLimit" type="checkbox" defaultChecked={value.allowAdminTestEvalAtQuotaLimit} />
+            <div><b className="block">额度耗尽后允许管理员内部测试</b><p className="mt-1 text-xs leading-5 text-slate-500">仅适用于 owner/admin 的非生产质量检查，且不扣正式 Points；Operator 仍会被服务端阻止。</p></div>
           </div>
           {message && <output className="text-sm text-cyan-800 sm:col-span-2">{message}</output>}
           <DialogFooter className="sm:col-span-2"><DialogClose render={<Button variant="outline" />}>关闭</DialogClose><Button disabled={pending}><Save />{pending ? '保存中…' : '保存配置'}</Button></DialogFooter>

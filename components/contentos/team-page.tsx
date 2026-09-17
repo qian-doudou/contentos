@@ -28,7 +28,7 @@ const roleTone: Record<string, string> = {
 };
 const workspaceLabels: Record<keyof WorkspaceAccess, string> = {
   scripts: 'AI 写脚本', masterData: '客户与账号', contents: '内容运营', shoots: '拍摄管理', edits: '剪辑审核',
-  ai: 'AI 运营', analytics: '运营数据', ops: '运营中心', skills: 'AI Skill', evals: '评测中心', team: '团队', settings: '系统设置',
+  ai: 'AI 运营', analytics: '运营数据', ops: '运营中心', skills: 'AI Skill', evals: '内部质量工具', team: '团队', settings: '系统设置',
 };
 
 function toLocalDateTime(value: string | null) {
@@ -48,7 +48,9 @@ function permissionDraft(member?: TeamMember): PermissionDraft {
 }
 
 function workspaceNames(access: WorkspaceAccess) {
-  return Object.entries(access).filter(([, allowed]) => allowed).map(([key]) => workspaceLabels[key as keyof WorkspaceAccess]);
+  return Object.entries(access)
+    .filter(([key, allowed]) => allowed && key !== 'evals')
+    .map(([key]) => workspaceLabels[key as keyof WorkspaceAccess]);
 }
 
 function previewWorkspaces(role: TeamMember['role'], clients: Array<{ roleOverride: TeamMember['role'] | null }>, effective: Record<PermissionCode, boolean>): WorkspaceAccess {
@@ -92,6 +94,7 @@ function AccountPermissionDialog({ data, member, onSaved }: { data: TeamData; me
   const actorRole = data.members.find(item => item.id === data.permissions.currentUserId)?.role;
   const assignableRoles = actorRole === 'owner' ? userRoles : userRoles.filter(item => !['owner', 'admin'].includes(item));
   const visibleWorkspaces = workspaceNames(previewWorkspaces(role, clients, effective));
+  const visiblePermissionCatalog = data.permissionCatalog.filter(item => !item.code.startsWith('eval.'));
 
   function resetForm() {
     setName(member?.name ?? '');
@@ -166,10 +169,10 @@ function AccountPermissionDialog({ data, member, onSaved }: { data: TeamData; me
           })}</div>
         </section>
         <section className="space-y-3"><div><h3 className="font-semibold">用户权限特例</h3><p className="mt-1 text-xs text-slate-500">只在个别成员与角色默认不同时设置；“继承角色”最容易维护。</p></div>
-          <div className="space-y-2">{data.permissionCatalog.map(item => <div className="grid gap-2 rounded-lg border p-3 md:grid-cols-[minmax(0,1fr)_9rem_12rem] md:items-center" key={item.code}><div><div className="flex flex-wrap items-center gap-2"><p className="text-sm font-medium">{item.label}</p><Badge variant="outline">{item.group}</Badge>{!item.overridable && <Badge variant="secondary">仅角色决定</Badge>}</div><p className="mt-1 text-xs text-slate-500">{item.description}</p></div><NativeSelect aria-label={`${item.label} 权限`} disabled={!item.overridable} value={draft[item.code].effect} onChange={event => setDraft(current => ({ ...current, [item.code]: { ...current[item.code], effect: event.target.value as PermissionEffect | 'inherit' } }))}><option value="inherit">继承角色</option><option value="allow">特别允许</option><option value="deny">显式禁止</option></NativeSelect><Input aria-label={`${item.label} 有效期`} type="datetime-local" disabled={!item.overridable || draft[item.code].effect === 'inherit'} value={draft[item.code].expiresAt} onChange={event => setDraft(current => ({ ...current, [item.code]: { ...current[item.code], expiresAt: event.target.value } }))} /></div>)}</div>
+          <div className="space-y-2">{visiblePermissionCatalog.map(item => <div className="grid gap-2 rounded-lg border p-3 md:grid-cols-[minmax(0,1fr)_9rem_12rem] md:items-center" key={item.code}><div><div className="flex flex-wrap items-center gap-2"><p className="text-sm font-medium">{item.label}</p><Badge variant="outline">{item.group}</Badge>{!item.overridable && <Badge variant="secondary">仅角色决定</Badge>}</div><p className="mt-1 text-xs text-slate-500">{item.description}</p></div><NativeSelect aria-label={`${item.label} 权限`} disabled={!item.overridable} value={draft[item.code].effect} onChange={event => setDraft(current => ({ ...current, [item.code]: { ...current[item.code], effect: event.target.value as PermissionEffect | 'inherit' } }))}><option value="inherit">继承角色</option><option value="allow">特别允许</option><option value="deny">显式禁止</option></NativeSelect><Input aria-label={`${item.label} 有效期`} type="datetime-local" disabled={!item.overridable || draft[item.code].effect === 'inherit'} value={draft[item.code].expiresAt} onChange={event => setDraft(current => ({ ...current, [item.code]: { ...current[item.code], expiresAt: event.target.value } }))} /></div>)}</div>
         </section>
-        <section className="rounded-xl border border-cyan-200 bg-cyan-50 p-4"><h3 className="text-sm font-semibold text-cyan-950">保存后工作区预览</h3><div className="mt-3 flex flex-wrap gap-2"><Badge className="bg-white text-cyan-800">工作台</Badge>{visibleWorkspaces.map(item => <Badge className="bg-white text-cyan-800" key={item}>{item}</Badge>)}</div><p className="mt-3 text-xs text-cyan-800">有效功能权限 {Object.values(effective).filter(Boolean).length} 项；客户范围 {clients.length} 个。</p></section>
-        <label className="space-y-1.5 text-sm" htmlFor={`permission-reason-${formKey}`}>{creating ? '创建原因' : '变更原因'} <span className="text-rose-600">*</span><Textarea id={`permission-reason-${formKey}`} value={reason} onChange={event => setReason(event.target.value)} maxLength={500} placeholder="例：负责仁爱宠物医院运营，临时开通评测查看权限" /></label>
+        <section className="rounded-xl border border-cyan-200 bg-cyan-50 p-4"><h3 className="text-sm font-semibold text-cyan-950">保存后工作区预览</h3><div className="mt-3 flex flex-wrap gap-2"><Badge className="bg-white text-cyan-800">工作台</Badge>{visibleWorkspaces.map(item => <Badge className="bg-white text-cyan-800" key={item}>{item}</Badge>)}</div><p className="mt-3 text-xs text-cyan-800">有效功能权限 {visiblePermissionCatalog.filter(item => effective[item.code]).length} 项；客户范围 {clients.length} 个。</p></section>
+        <label className="space-y-1.5 text-sm" htmlFor={`permission-reason-${formKey}`}>{creating ? '创建原因' : '变更原因'} <span className="text-rose-600">*</span><Textarea id={`permission-reason-${formKey}`} value={reason} onChange={event => setReason(event.target.value)} maxLength={500} placeholder="例：负责仁爱宠物医院运营，临时开放 AI Skill 查看权限" /></label>
         {error && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
         <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>取消</Button><Button disabled={pending} onClick={requestSave}><ShieldCheck />{creating ? '预览并创建' : '预览并保存'}</Button></DialogFooter>
       </DialogContent>
@@ -185,6 +188,7 @@ export function TeamPage() {
   if (state.error) return <ErrorData error={state.error} retry={state.reload} />;
   if (!state.data) return null;
   const data = state.data;
+  const visiblePermissionCatalog = data.permissionCatalog.filter(item => !item.code.startsWith('eval.'));
   const activeCount = data.members.filter(member => member.status === 'active').length;
   const assignedCount = data.members.filter(member => member.clientCount > 0).length;
   const overrideCount = data.members.reduce((sum, member) => sum + member.permissionOverrides.filter(item => !item.expiresAt || Date.parse(item.expiresAt) > Date.now()).length, 0);
@@ -199,7 +203,7 @@ export function TeamPage() {
     ].map(item => <Card key={item.label}><CardHeader className="flex-row items-center justify-between"><CardTitle className="text-sm font-medium text-slate-500">{item.label}</CardTitle><item.icon className="size-4 text-cyan-700" /></CardHeader><CardContent><p className="text-3xl font-semibold tabular-nums">{item.value}</p></CardContent></Card>)}</section>
     <details className="surface-card !p-0">
       <summary aria-label="展开或收起角色权限基线" className="cursor-pointer list-none p-5"><div className="flex items-center justify-between gap-3"><div><h2 className="font-semibold">角色权限基线</h2><p className="mt-1 text-sm text-slate-500">系统角色提供可预测的默认能力；用户特例只覆盖标记为可调整的权限。</p></div><Badge variant="outline">{userRoles.length} 个角色</Badge></div></summary>
-      <div className="overflow-x-auto border-t"><Table><TableHeader><TableRow><TableHead className="min-w-56">权限</TableHead>{userRoles.map(role => <TableHead className="text-center" key={role}>{roleLabels[role]}</TableHead>)}</TableRow></TableHeader><TableBody>{data.permissionCatalog.map(item => <TableRow key={item.code}><TableCell><p className="font-medium">{item.label}</p><p className="mt-1 text-xs text-slate-500">{item.group} · {item.overridable ? '可设用户特例' : '仅角色决定'}</p></TableCell>{userRoles.map(role => <TableCell className="text-center" key={role}>{data.roleDefaults[role][item.code] ? <><Check className="mx-auto size-4 text-emerald-600" /><span className="sr-only">允许</span></> : <><Minus className="mx-auto size-4 text-slate-300" /><span className="sr-only">不允许</span></>}</TableCell>)}</TableRow>)}</TableBody></Table></div>
+      <div className="overflow-x-auto border-t"><Table><TableHeader><TableRow><TableHead className="min-w-56">权限</TableHead>{userRoles.map(role => <TableHead className="text-center" key={role}>{roleLabels[role]}</TableHead>)}</TableRow></TableHeader><TableBody>{visiblePermissionCatalog.map(item => <TableRow key={item.code}><TableCell><p className="font-medium">{item.label}</p><p className="mt-1 text-xs text-slate-500">{item.group} · {item.overridable ? '可设用户特例' : '仅角色决定'}</p></TableCell>{userRoles.map(role => <TableCell className="text-center" key={role}>{data.roleDefaults[role][item.code] ? <><Check className="mx-auto size-4 text-emerald-600" /><span className="sr-only">允许</span></> : <><Minus className="mx-auto size-4 text-slate-300" /><span className="sr-only">不允许</span></>}</TableCell>)}</TableRow>)}</TableBody></Table></div>
     </details>
     <section className="surface-card !p-0"><div className="flex flex-wrap items-center justify-between gap-3 border-b p-5"><div><h2 className="font-semibold">成员有效权限</h2><p className="mt-1 text-sm text-slate-500">客户范围、当前任务和最终可见工作区集中展示，避免只看到一个“负责客户数”。</p></div><Badge variant="outline">{data.members.length} 人</Badge></div>
       {data.members.length ? <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>成员</TableHead><TableHead>角色</TableHead><TableHead>客户范围</TableHead><TableHead>当前任务</TableHead><TableHead>可见工作区</TableHead><TableHead>状态</TableHead><TableHead className="text-right">操作</TableHead></TableRow></TableHeader><TableBody>{data.members.map(member => {
