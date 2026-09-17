@@ -8,6 +8,10 @@ import {
   Flame, Gauge, Menu, Settings, ShieldCheck, Sparkles, Users, FilePenLine,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenuSeparator, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { NativeSelect } from '@/components/ui/native-select';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { devIdentityDataSchema, roleLabels, type WorkspaceAccess } from '@/lib/auth/contracts';
@@ -26,7 +30,6 @@ const navigationItems = [
   { href: '/ops', label: '运营中心', icon: Activity, access: 'ops' },
   { href: '/skills', label: 'AI Skill', icon: Cpu, access: 'skills' },
   { href: '/team', label: '团队与权限', icon: Users, access: 'team' },
-  { href: '/settings', label: '系统设置', icon: Settings, access: 'settings' },
 ] as const;
 
 function ProductMark() {
@@ -122,7 +125,26 @@ function AuthenticatedAppShell({ children }: { children: React.ReactNode }) {
                   </NativeSelect>
                   : <span className="text-sm font-medium">{identity.data.currentUser.name}</span>
               )}
-              <span className="grid size-8 shrink-0 place-items-center rounded-full bg-[#eeece9] text-sm font-semibold text-[#37352f]">{identity.data?.currentUser.name.slice(0, 1) || '运'}</span>
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={<button aria-label="打开个人菜单" className="grid size-9 shrink-0 place-items-center rounded-full bg-[#eeece9] text-sm font-semibold text-[#37352f] outline-none transition hover:bg-[#e3e2df] focus-visible:ring-2 focus-visible:ring-[#2383e2]/35" type="button" />}
+                >
+                  {identity.data?.currentUser.name.slice(0, 1) || '运'}
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" sideOffset={8} className="w-64 p-2">
+                  <div className="px-2 py-2">
+                    <span className="block truncate text-sm font-semibold text-[#37352f]">{identity.data?.currentUser.name || '当前用户'}</span>
+                    <span className="mt-1 block truncate text-xs font-normal text-[#9b9a97]">{identity.data ? `${roleLabels[identity.data.currentUser.role]} · ${identity.data.organization.name}` : '身份加载中'}</span>
+                  </div>
+                  {identity.data?.workspaceAccess.settings && <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem className="cursor-pointer gap-2 px-2 py-2.5" render={<Link href="/settings" />}>
+                      <Settings className="size-4 text-[#787774]" />
+                      <span>系统设置</span>
+                    </DropdownMenuItem>
+                  </>}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
         </header>
