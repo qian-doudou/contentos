@@ -670,9 +670,9 @@ export function AiSettingsPage() {
         <Button
           variant="outline"
           nativeButton={false}
-          render={<Link href="/skills" />}
+          render={<Link href="/settings" />}
         >
-          返回 Skill
+          返回系统设置
         </Button>
       </Heading>
       {state.loading ? (

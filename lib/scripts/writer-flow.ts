@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { CreativeBrief } from '@/lib/creative/contracts';
 import { persistPlannerResultSchema, plannerSessionViewSchema, type PlannerSessionView } from '@/lib/planner/contracts';
 import { generateScriptResultSchema, scriptWorkspaceSchema } from './contracts';
 
@@ -10,6 +11,7 @@ export async function writeSelectedScript(
   sessionId: string,
   candidateId: string,
   onSaved: (session: PlannerSessionView, contentId: string) => void,
+  creativeBrief?: CreativeBrief,
 ) {
   let session = await request(`/api/ai/planner/${sessionId}`, plannerSessionViewSchema);
   const candidate = session.candidates.find((item) => item.id === candidateId);
@@ -20,7 +22,8 @@ export async function writeSelectedScript(
     if (session.status !== 'awaiting_selection') throw new Error('这批选题已结束，请重新生成选题。');
     try {
       const saved = await request(`/api/ai/planner/${sessionId}/persist`, persistPlannerResultSchema, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ candidateIds: [candidateId] }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ candidateIds: [candidateId], candidateOverrides: creativeBrief ? [{ candidateId, creativeBrief }] : [] }),
       });
       session = saved.session;
     } catch (error) {

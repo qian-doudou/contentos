@@ -120,6 +120,20 @@
       "when": 1788975873313,
       "tag": "0016_lonely_red_skull",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1789202224067,
+      "tag": "0017_user_permission_overrides",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1789282499463,
+      "tag": "0018_long_glorian",
+      "breakpoints": true
     }
   ]
 }

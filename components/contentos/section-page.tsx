@@ -56,7 +56,7 @@ export function SectionPage({ config }: { config: SectionConfig }) {
           <CardContent className="flex min-h-80 items-center justify-center">
             <Empty className="max-w-xl border border-dashed border-slate-200 bg-slate-50/70">
               <EmptyHeader><EmptyMedia variant="icon">{isAi ? <Sparkles /> : <Layers3 />}</EmptyMedia><EmptyTitle>{isAi ? 'AI 内容策划工作台' : `${config.entity}暂无数据`}</EmptyTitle><EmptyDescription>{isAi ? '从账号 Context 与月度计划缺口生成候选，逐条执行历史检索、重复判断和质量门禁，人工选择后才写入内容库。' : '该模块不在当前阶段实现范围内。后续接入时将沿用 organization_id、多租户数据隔离与统一 Run 追踪。'}</EmptyDescription></EmptyHeader>
-              {isAi ? <div className="flex flex-wrap gap-2"><Button nativeButton={false} render={<Link href="/ai/planner" />}>打开 Content Planner<ArrowRight data-icon="inline-end" /></Button><Button variant="outline" nativeButton={false} render={<Link href="/ai/memory" />}>Memory</Button><Button variant="outline" nativeButton={false} render={<Link href="/ai/dedup-test" />}>去重测试</Button></div> : <Button variant="outline" nativeButton={false} render={<Link href="/" />}>返回工作台<ArrowRight data-icon="inline-end" /></Button>}
+              {isAi ? <div className="flex flex-wrap gap-2"><Button nativeButton={false} render={<Link href="/ai/planner" />}>打开 Content Planner<ArrowRight data-icon="inline-end" /></Button><Button variant="outline" nativeButton={false} render={<Link href="/ai/dedup-test" />}>去重测试</Button></div> : <Button variant="outline" nativeButton={false} render={<Link href="/" />}>返回工作台<ArrowRight data-icon="inline-end" /></Button>}
             </Empty>
           </CardContent>
         </Card>

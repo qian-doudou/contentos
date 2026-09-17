@@ -5,6 +5,7 @@ import * as tables from '@/db/schema';
 import { ApiError } from '@/lib/api/envelope';
 import { permissionService } from '@/lib/auth/permissions';
 import { assertContentTransition } from '@/lib/content/workflow';
+import { creativeBriefSchema, shootingMethodLabels } from '@/lib/creative/contracts';
 import { OpenAICompatibleClient } from '@/lib/llm/client';
 import { contextBuilder } from '@/lib/memory/context-builder';
 import { plannerAiRuntime } from '@/lib/planner/ai-runtime';
@@ -88,16 +89,27 @@ function mockScript(
   content: typeof tables.contents.$inferSelect,
   brand: typeof tables.brands.$inferSelect,
 ): ScriptJson {
+  const briefResult = creativeBriefSchema.safeParse(content.creativeBriefJson);
+  const brief = briefResult.success ? briefResult.data : null;
   const product = content.productText || brand.coreProductsJson[0] || '招牌产品';
   const hook = content.hookText || `在${brand.city || '本地'}，很多人第一次了解这件事都会忽略一个细节。`;
+  const targetDuration = brief?.targetDurationSeconds ?? 30;
+  const roleIntroduction = brief?.onCameraRole === 'staff' ? '我是店里的工作人员。'
+    : brief?.onCameraRole === 'customer' ? '今天从顾客的真实体验来看看。'
+      : brief?.onCameraRole === 'multiple' ? '我们从门店和顾客两个视角来看看。'
+        : brief?.onCameraRole === 'voiceover' ? '不用人物出镜，直接看真实现场。'
+          : '我是这家店的负责人。';
+  const body = targetDuration >= 45
+    ? `${roleIntroduction}今天不讲夸张噱头，就从真实现场带你看看${content.topic || content.title}。${content.coreMessage || `我们会把${product}的关键细节讲清楚。`}我会按过程把原因、细节和结果展示清楚，让你能自己判断。`
+    : `${roleIntroduction}今天不讲夸张噱头，就从真实现场带你看看${content.topic || content.title}。${content.coreMessage || `我们会把${product}的关键细节讲清楚。`}`;
   return scriptJsonSchema.parse({
     title: content.title,
     hook,
-    spoken_script: `${hook}\n我是这家店的负责人。今天不讲夸张噱头，就从真实现场带你看看${content.topic || content.title}。${content.coreMessage || `我们会把${product}的关键细节讲清楚。`}到店时可以按自己的需求选择，具体信息以门店当期公示为准。`,
+    spoken_script: `${hook}\n${body}${content.ctaType || '到店时可以按自己的需求选择，具体信息以门店当期公示为准。'}`,
     shots: [
-      { scene: '门店开场', visual: '门店负责人在真实工作环境出镜', spoken_line: hook },
-      { scene: '核心展示', visual: `近景展示${product}相关细节与服务过程`, spoken_line: content.coreMessage || `把${product}的真实细节展示清楚。` },
-      { scene: '结尾行动', visual: '门店负责人面向镜头自然收尾', spoken_line: content.ctaType || '欢迎到店按实际需求了解。' },
+      { scene: '钩子开场', duration_seconds: Math.max(3, Math.round(targetDuration * 0.2)), visual: '在真实工作环境中直接呈现问题或反差', spoken_line: hook },
+      { scene: '核心展示', duration_seconds: Math.max(8, Math.round(targetDuration * 0.6)), visual: `用${brief ? shootingMethodLabels[brief.shootingMethod] : '现场跟拍'}展示${product}相关细节与服务过程`, spoken_line: content.coreMessage || `把${product}的真实细节展示清楚。` },
+      { scene: '结尾行动', duration_seconds: Math.max(3, Math.round(targetDuration * 0.2)), visual: '按本次创意方式自然收尾', spoken_line: content.ctaType || '欢迎到店按实际需求了解。' },
     ],
     product_integration: content.productText,
     cta: content.ctaType || '欢迎到店了解，具体信息以门店当期公示为准。',
@@ -482,11 +494,15 @@ export function scriptApprovalService(
             topic: row.topic, angle: row.angle, hook_type: row.hookType, hook_text: row.hookText,
             core_message: row.coreMessage, product_text: row.productText, cta_type: row.ctaType,
             local_element: row.localElement, people: row.peopleJson,
+            creative_brief: row.creativeBriefJson,
           },
           context: context.layers,
           requirements: {
             output_language: 'zh-CN', dynamic_facts_must_have_context_source: true,
             preserve_exact_json_shape: true,
+            follow_selected_creative_brief: true,
+            target_duration_seconds: creativeBriefSchema.safeParse(row.creativeBriefJson).success
+              ? creativeBriefSchema.parse(row.creativeBriefJson).targetDurationSeconds : null,
           },
         };
         const generatorStarted = startStep(generatorStep.id, { contentId: row.id, contextSnapshotId: context.snapshotId });

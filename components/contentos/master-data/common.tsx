@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { z } from 'zod';
 import { AlertTriangle, Inbox, RefreshCw } from 'lucide-react';
@@ -31,7 +32,9 @@ export function LoadingData() {
   return <div aria-label="正在加载业务数据" className="space-y-4"><Skeleton className="h-10 w-64" /><Skeleton className="h-24 w-full" /><Skeleton className="h-64 w-full" /></div>;
 }
 export function ErrorData({ error, retry }: { error: Error; retry: () => void }) {
-  return <div className="surface-card"><Empty className="min-h-64"><EmptyHeader><EmptyMedia variant="icon"><AlertTriangle /></EmptyMedia><EmptyTitle>无法加载数据</EmptyTitle><EmptyDescription>{error.message}</EmptyDescription></EmptyHeader>{error instanceof RequestError && error.requestId && <p className="text-xs text-slate-500">请求编号：{error.requestId}</p>}<Button onClick={retry}><RefreshCw />重试</Button></Empty></div>;
+  const permissionDenied = error instanceof RequestError
+    && ['PERMISSION_DENIED', 'ORGANIZATION_ACCESS_DENIED'].includes(error.code);
+  return <div className="surface-card"><Empty className="min-h-64"><EmptyHeader><EmptyMedia variant="icon"><AlertTriangle /></EmptyMedia><EmptyTitle>{permissionDenied ? '没有访问权限' : '无法加载数据'}</EmptyTitle><EmptyDescription>{permissionDenied ? `${error.message}。如工作职责有变化，请联系组织管理员调整角色、客户范围或用户权限。` : error.message}</EmptyDescription></EmptyHeader>{error instanceof RequestError && error.requestId && <p className="text-xs text-slate-500">请求编号：{error.requestId}</p>}{permissionDenied ? <Button nativeButton={false} render={<Link href="/" />}>返回工作台</Button> : <Button onClick={retry}><RefreshCw />重试</Button>}</Empty></div>;
 }
 export function EmptyData({ title = '暂无记录', description, children }: { title?: string; description: string; children?: React.ReactNode }) {
   return <Empty className="min-h-52"><EmptyHeader><EmptyMedia variant="icon"><Inbox /></EmptyMedia><EmptyTitle>{title}</EmptyTitle><EmptyDescription>{description}</EmptyDescription></EmptyHeader>{children}</Empty>;

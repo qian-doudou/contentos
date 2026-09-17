@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { contentGoals, contentTypes, duplicateLevels, hookTypes } from '@/db/constants';
+import { creativeBriefSchema } from '@/lib/creative/contracts';
 import { historyRetrievalItemSchema } from '@/lib/history/contracts';
 
 const uuid = z.uuid();
@@ -184,6 +185,7 @@ export const plannerCandidateViewSchema = z.object({
   hookType: z.enum(hookTypes),
   hookIdea: z.string(),
   coreMessage: z.string(),
+  creativeBrief: creativeBriefSchema,
   recommendedReason: z.string(),
   duplicateLevel: z.enum(duplicateLevels),
   similarContents: z.array(similarContentSchema).max(10),
@@ -209,8 +211,18 @@ export const plannerSessionViewSchema = z.object({
   }),
 });
 
-export const persistPlannerSelectionSchema = z.object({ candidateIds: z.array(uuid).min(1).max(20) }).strict()
-  .refine((value) => new Set(value.candidateIds).size === value.candidateIds.length, 'candidateIds 不能重复');
+export const persistPlannerSelectionSchema = z.object({
+  candidateIds: z.array(uuid).min(1).max(20),
+  candidateOverrides: z.array(z.object({ candidateId: uuid, creativeBrief: creativeBriefSchema }).strict()).max(20).default([]),
+}).strict().superRefine((value, context) => {
+  if (new Set(value.candidateIds).size !== value.candidateIds.length)
+    context.addIssue({ code: 'custom', path: ['candidateIds'], message: 'candidateIds 不能重复' });
+  const overrideIds = value.candidateOverrides.map(item => item.candidateId);
+  if (new Set(overrideIds).size !== overrideIds.length)
+    context.addIssue({ code: 'custom', path: ['candidateOverrides'], message: '同一候选只能提交一组创意调整' });
+  if (overrideIds.some(id => !value.candidateIds.includes(id)))
+    context.addIssue({ code: 'custom', path: ['candidateOverrides'], message: '只能调整本次选中的候选' });
+});
 export const persistPlannerResultSchema = z.object({ session: plannerSessionViewSchema, contentIds: z.array(uuid), billedPoints: z.number().int().nonnegative() });
 export const reanglePlannerCandidateSchema = z.object({ alternativeAngle: z.string().trim().min(1).max(500).nullable().optional() }).strict();
 

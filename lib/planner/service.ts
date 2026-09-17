@@ -2,10 +2,15 @@ import { and, asc, count, desc, eq, gt, inArray, lte, ne, sql } from 'drizzle-or
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { z } from 'zod';
 import * as tables from '@/db/schema';
+import { contentGoals } from '@/db/constants';
 import { ApiError } from '@/lib/api/envelope';
 import { permissionService } from '@/lib/auth/permissions';
 import { calculateMixStats } from '@/lib/content/service';
 import { contentSchema } from '@/lib/content/contracts';
+import {
+  creativeBriefSchema, shootingDifficultyByMethod, shootingRequirementsByMethod,
+  storyStructureByInnovation, type CreativeBrief,
+} from '@/lib/creative/contracts';
 import { duplicateJudgeOutputSchema } from '@/lib/history/contracts';
 import { historyRetrievalService } from '@/lib/history/service';
 import { contextBuilder } from '@/lib/memory/context-builder';
@@ -40,6 +45,90 @@ function activityAndQuantityTokens(value: string) {
   ])];
 }
 
+const durationChoices = [20, 30, 45, 60] as const;
+
+function uniqueText(values: string[]) {
+  return [...new Set(values.map(value => value.trim()).filter(Boolean))];
+}
+
+function creativeBriefFor(
+  item: PlannerItem,
+  sequence: number,
+  input?: PlannerInput,
+  context?: ContextBuildResult,
+): CreativeBrief {
+  const stable = new Map(context?.layers.l1StableContext.map(entry => [entry.key, entry.value]) ?? []);
+  const confirmedSellingPoints = Array.isArray(stable.get('brand.core_selling_points'))
+    ? (stable.get('brand.core_selling_points') as unknown[]).filter((value): value is string => typeof value === 'string')
+    : [];
+  const methodByType = {
+    persona: 'talking_head', product: 'comparison', local: 'documentary', trust: 'documentary', conversion: 'talking_head',
+    education: 'voiceover', process: 'documentary', customer_case: 'interview', other: 'voiceover',
+  } as const;
+  const durationByType = {
+    persona: 30, product: 30, local: 20, trust: 45, conversion: 30,
+    education: 45, process: 45, customer_case: 60, other: 30,
+  } as const;
+  const audienceMomentByGoal: Record<PlannerInput['primaryGoal'], string> = {
+    exposure: '在前 3 秒停下来，愿意看完这个真实现场',
+    followers: '认可账号的专业或人设价值，产生持续关注意愿',
+    trust: '对产品或服务存疑时，通过可验证细节建立信任',
+    click: '看到明确价值后，愿意进入详情继续了解',
+    conversion: '临近决策时得到简单、可执行的选择理由',
+    gmv: '已有购买意向时，快速理解产品价值和行动方式',
+  };
+  const ctaByGoal: Record<PlannerInput['primaryGoal'], string> = {
+    exposure: '邀请评论交流经验，不做强销售', followers: '用下期内容预告引导关注',
+    trust: '引导收藏或留下具体问题', click: '引导查看详情，动态信息以页面当期公示为准',
+    conversion: '引导按实际需求咨询或到店了解', gmv: '引导进入当期商品页，不编造价格或优惠',
+  };
+  const preferredInnovation = input?.specialRequirements?.match(/创意强度偏好：(safe|fresh|bold)/u)?.[1] as CreativeBrief['innovationLevel'] | undefined;
+  const preferredRole = input?.specialRequirements?.match(/出镜条件：(ai_recommended|owner|staff|customer|multiple|voiceover)/u)?.[1] as CreativeBrief['onCameraRole'] | undefined;
+  const innovationLevel = preferredInnovation ?? (['safe', 'fresh', 'bold'] as const)[sequence % 3];
+  const shootingMethod = methodByType[item.content_type];
+  const hookOptions = [
+    { type: item.hook_type, text: item.hook_idea },
+    { type: 'question' as const, text: `你真的了解“${item.topic}”吗？先看这个最容易忽略的细节。` },
+    { type: 'contrast' as const, text: `同样是“${item.topic}”，真正拉开差别的是这一点。` },
+  ].filter((option, index, values) => values.findIndex(value => value.text === option.text) === index);
+  const sellingPointOptions = uniqueText([
+    item.core_message,
+    ...confirmedSellingPoints.slice(0, 2),
+    `围绕“${item.topic}”只讲一个可验证的重点`,
+  ]).slice(0, 4);
+  return creativeBriefSchema.parse({
+    sellingPoint: sellingPointOptions[0], sellingPointOptions,
+    creativeConcept: item.angle, audienceMoment: audienceMomentByGoal[item.content_goal],
+    storyStructure: storyStructureByInnovation[innovationLevel],
+    targetDurationSeconds: durationByType[item.content_type], shootingMethod,
+    shootingDifficulty: shootingDifficultyByMethod[shootingMethod],
+    onCameraRole: preferredRole ?? (item.content_type === 'customer_case' ? 'customer' : item.content_type === 'education' ? 'voiceover' : 'owner'),
+    shootingRequirements: shootingRequirementsByMethod[shootingMethod],
+    ctaStrategy: ctaByGoal[item.content_goal], innovationLevel,
+    hookType: hookOptions[0].type, hookText: hookOptions[0].text, hookOptions,
+  });
+}
+
+function validatedCreativeOverride(base: CreativeBrief, value: CreativeBrief | undefined) {
+  if (!value) return base;
+  const fixedKeys = ['sellingPointOptions', 'creativeConcept', 'audienceMoment', 'ctaStrategy', 'hookOptions'] as const;
+  if (fixedKeys.some(key => JSON.stringify(value[key]) !== JSON.stringify(base[key])))
+    throw new ApiError(400, 'INVALID_CREATIVE_OVERRIDE', '创意调整包含不可修改的候选内容');
+  if (!base.sellingPointOptions.includes(value.sellingPoint))
+    throw new ApiError(400, 'INVALID_CREATIVE_OVERRIDE', '核心卖点不在本次已生成选项中');
+  if (!base.hookOptions.some(option => option.type === value.hookType && option.text === value.hookText))
+    throw new ApiError(400, 'INVALID_CREATIVE_OVERRIDE', '视频钩子不在本次已生成选项中');
+  if (!durationChoices.includes(value.targetDurationSeconds as (typeof durationChoices)[number]))
+    throw new ApiError(400, 'INVALID_CREATIVE_OVERRIDE', '目标时长不在可选范围内');
+  if (value.shootingDifficulty !== shootingDifficultyByMethod[value.shootingMethod])
+    throw new ApiError(400, 'INVALID_CREATIVE_OVERRIDE', '拍摄复杂度与所选拍法不一致');
+  if (JSON.stringify(value.shootingRequirements) !== JSON.stringify(shootingRequirementsByMethod[value.shootingMethod]))
+    throw new ApiError(400, 'INVALID_CREATIVE_OVERRIDE', '拍摄要求与所选拍法不一致');
+  if (JSON.stringify(value.storyStructure) !== JSON.stringify(storyStructureByInnovation[value.innovationLevel]))
+    throw new ApiError(400, 'INVALID_CREATIVE_OVERRIDE', '故事结构与所选创意强度不一致');
+  return value;
+}
+
 function scrubUnverifiedDynamicFacts(item: PlannerItem, allowedText: string) {
   const fields = ['title', 'topic', 'angle', 'hook_idea', 'core_message', 'recommended_reason'] as const;
   const invalid = fields.flatMap((field) => [...priceTokens(item[field]), ...activityAndQuantityTokens(item[field])]
@@ -72,20 +161,27 @@ function mockPlanner(input: PlannerInput, context: ContextBuildResult, count = i
     { type: 'process' as const, hook: 'secret' as const, title: '服务中最不能省的一道流程', topic: '门店标准流程', angle: '展示容易被忽略的真实操作环节' },
     { type: 'trust' as const, hook: 'result' as const, title: '顾客愿意再来的原因藏在细节里', topic: '真实服务细节', angle: '从一次完整到店体验建立信任' },
   ];
+  const autonomousDirections = input.specialRequirements?.includes('AI 方向批次：') ?? false;
+  const batch = Number(input.specialRequirements?.match(/AI 方向批次：(\d+)/u)?.[1] ?? '1');
+  const offset = Math.max(0, batch - 1) * count;
+  const goalCycle: PlannerInput['primaryGoal'][] = autonomousDirections
+    ? [input.primaryGoal, ...contentGoals.filter(goal => goal !== input.primaryGoal)]
+    : [input.primaryGoal];
   return plannerOutputSchema.parse({
     planning_summary: `围绕${positioning}与当前计划缺口，生成 ${count} 条可验证、可拍摄的内容候选。`,
     items: Array.from({ length: count }, (_, index) => {
-      const pattern = patterns[index % patterns.length];
-      const suffix = index >= patterns.length ? `（${Math.floor(index / patterns.length) + 1}）` : '';
+      const absoluteIndex = offset + index;
+      const pattern = patterns[absoluteIndex % patterns.length];
+      const suffix = absoluteIndex >= patterns.length ? `（新方向 ${Math.floor(absoluteIndex / patterns.length) + 1}）` : '';
       const focusProduct = pattern.type === 'product'
         ? products[0]
         : pattern.type === 'local'
           ? products[1] ?? products[0]
-          : products[index % Math.max(products.length, 1)];
+          : products[absoluteIndex % Math.max(products.length, 1)];
       return {
-        title: `${pattern.title}${suffix}`, content_type: pattern.type, content_goal: input.primaryGoal,
+        title: `${pattern.title}${suffix}`, content_type: pattern.type, content_goal: goalCycle[absoluteIndex % goalCycle.length],
         topic: pattern.topic, angle: pattern.angle, hook_type: pattern.hook,
-        hook_idea: index === 0 ? '你看到的是开门营业，老板先做的其实是这一件事。' : `别急着下结论，先看第 ${index + 1} 个真实细节。`,
+        hook_idea: absoluteIndex === 0 ? '你看到的是开门营业，老板先做的其实是这一件事。' : `别急着下结论，先看第 ${absoluteIndex + 1} 个真实细节。`,
         core_message: `用真实现场呈现${focusProduct ?? context.account.brandName}，不使用未经确认的价格或活动。`,
         recommended_reason: '匹配账号风格，并补充当前月度计划的结构化内容供给。',
       };
@@ -167,16 +263,25 @@ export function aiPlannerService(
       eq(tables.plannerCandidates.organizationId, organizationId),
       eq(tables.plannerCandidates.plannerSessionId, row.id),
       ne(tables.plannerCandidates.status, 'replaced'),
-    )).orderBy(asc(tables.plannerCandidates.sequence)).all().map((item) => ({
-      id: item.id, sequence: item.sequence, revision: item.revision, title: item.title,
-      contentType: item.contentType, contentGoal: item.contentGoal, topic: item.topic, angle: item.angle,
-      hookType: item.hookType, hookIdea: item.hookIdea, coreMessage: item.coreMessage,
-      recommendedReason: item.recommendedReason, duplicateLevel: item.duplicateLevel,
-      similarContents: item.similarContentsJson, duplicateReason: item.duplicateReason,
-      alternativeAngles: item.alternativeAnglesJson, qualityStatus: item.qualityStatus,
-      qualityIssues: item.qualityIssuesJson, selectable: item.selectable, status: item.status,
-      persistedContentId: item.persistedContentId,
-    }));
+    )).orderBy(asc(tables.plannerCandidates.sequence)).all().map((item) => {
+      const legacyBrief = creativeBriefFor({
+        title: item.title, content_type: item.contentType, content_goal: item.contentGoal,
+        topic: item.topic, angle: item.angle, hook_type: item.hookType, hook_idea: item.hookIdea,
+        core_message: item.coreMessage, recommended_reason: item.recommendedReason,
+      }, item.sequence);
+      const parsedBrief = creativeBriefSchema.safeParse(item.creativeBriefJson);
+      return {
+        id: item.id, sequence: item.sequence, revision: item.revision, title: item.title,
+        contentType: item.contentType, contentGoal: item.contentGoal, topic: item.topic, angle: item.angle,
+        hookType: item.hookType, hookIdea: item.hookIdea, coreMessage: item.coreMessage,
+        creativeBrief: parsedBrief.success ? parsedBrief.data : legacyBrief,
+        recommendedReason: item.recommendedReason, duplicateLevel: item.duplicateLevel,
+        similarContents: item.similarContentsJson, duplicateReason: item.duplicateReason,
+        alternativeAngles: item.alternativeAnglesJson, qualityStatus: item.qualityStatus,
+        qualityIssues: item.qualityIssuesJson, selectable: item.selectable, status: item.status,
+        persistedContentId: item.persistedContentId,
+      };
+    });
     return plannerSessionViewSchema.parse({
       id: row.id, runId: row.runId, accountId: row.accountId, accountName: accountRow.accountName,
       monthlyPlanId: row.monthlyPlanId, contextSnapshotId: row.contextSnapshotId,
@@ -458,6 +563,7 @@ export function aiPlannerService(
             title: entry.item.title, contentType: entry.item.content_type, contentGoal: entry.item.content_goal,
             topic: entry.item.topic, angle: entry.item.angle, hookType: entry.item.hook_type, hookIdea: entry.item.hook_idea,
             coreMessage: entry.item.core_message, recommendedReason: entry.item.recommended_reason,
+            creativeBriefJson: creativeBriefFor(entry.item, entry.sequence, value, context),
             duplicateLevel: entry.judgment.duplicate_level,
             similarContentsJson: entry.retrieval.top10.map(({ contentId, title, topic, angle, similarity, ruleScore }) => ({ contentId, title, topic, angle, similarity, ruleScore })),
             duplicateReason: entry.judgment.reason, alternativeAnglesJson: entry.judgment.alternative_angles,
@@ -490,6 +596,16 @@ export function aiPlannerService(
       if (selected.length !== value.candidateIds.length) throw new ApiError(404, 'CANDIDATE_NOT_FOUND', '候选不存在、已替换或不属于当前会话');
       if (selected.some((item) => !item.selectable || item.duplicateLevel === 'high' || item.qualityStatus === 'blocked'))
         throw new ApiError(409, 'CANDIDATE_NOT_SELECTABLE', '高度重复或质量阻断的候选不能保存');
+      const overrideByCandidateId = new Map(value.candidateOverrides.map(item => [item.candidateId, item.creativeBrief]));
+      const resolvedBriefByCandidateId = new Map(selected.map(candidate => {
+        const parsedBrief = creativeBriefSchema.safeParse(candidate.creativeBriefJson);
+        const baseBrief = parsedBrief.success ? parsedBrief.data : creativeBriefFor({
+          title: candidate.title, content_type: candidate.contentType, content_goal: candidate.contentGoal,
+          topic: candidate.topic, angle: candidate.angle, hook_type: candidate.hookType, hook_idea: candidate.hookIdea,
+          core_message: candidate.coreMessage, recommended_reason: candidate.recommendedReason,
+        }, candidate.sequence);
+        return [candidate.id, validatedCreativeOverride(baseBrief, overrideByCandidateId.get(candidate.id))] as const;
+      }));
       const accountRow = account(row.accountId);
       const persistStep = step(row.runId, 'persist_selected_contents');
       const startedAt = timestamp();
@@ -514,12 +630,14 @@ export function aiPlannerService(
           db.update(tables.runSteps).set({ status: 'running', inputJson: json({ candidateIds: value.candidateIds }), startedAt })
             .where(and(eq(tables.runSteps.organizationId, organizationId), eq(tables.runSteps.id, persistStep.id), eq(tables.runSteps.status, 'pending'))).run();
           for (const candidate of selected) {
+            const creativeBrief = resolvedBriefByCandidateId.get(candidate.id)!;
             const content = contentSchema.parse({
               id: crypto.randomUUID(), organizationId, clientId: accountRow.clientId, brandId: accountRow.brandId,
               storeId: accountRow.storeId, accountId: accountRow.id, monthlyPlanId: row.monthlyPlanId,
               title: candidate.title, contentType: candidate.contentType, contentGoal: candidate.contentGoal,
-              topic: candidate.topic, angle: candidate.angle, hookType: candidate.hookType, hookText: candidate.hookIdea,
-              coreMessage: candidate.coreMessage, productText: '', ctaType: '', localElement: '', peopleJson: [],
+              topic: candidate.topic, angle: creativeBrief.creativeConcept, hookType: creativeBrief.hookType, hookText: creativeBrief.hookText,
+              coreMessage: creativeBrief.sellingPoint, productText: creativeBrief.sellingPoint,
+              ctaType: creativeBrief.ctaStrategy, localElement: '', peopleJson: [], creativeBriefJson: creativeBrief,
               status: 'IDEA', priority: 'normal', operatorId: userId, plannedPublishDate: null, publishedAt: null,
               deadline: null, externalId: null, importDedupKey: null, importBatchId: null,
               currentScriptVersionId: null, activeApprovedScriptVersionId: null, currentEditVersionId: null,
@@ -527,7 +645,7 @@ export function aiPlannerService(
               createdBy: userId, isDemo, createdAt: at, updatedAt: at,
             });
             db.insert(tables.contents).values(content).run();
-            db.update(tables.plannerCandidates).set({ status: 'persisted', persistedContentId: content.id, updatedAt: at })
+            db.update(tables.plannerCandidates).set({ status: 'persisted', persistedContentId: content.id, creativeBriefJson: creativeBrief, updatedAt: at })
               .where(and(eq(tables.plannerCandidates.organizationId, organizationId), eq(tables.plannerCandidates.id, candidate.id))).run();
             createdIds.push(content.id);
           }
@@ -642,6 +760,7 @@ export function aiPlannerService(
             title: entry.item.title, contentType: entry.item.content_type, contentGoal: entry.item.content_goal,
             topic: entry.item.topic, angle: entry.item.angle, hookType: entry.item.hook_type, hookIdea: entry.item.hook_idea,
             coreMessage: entry.item.core_message, recommendedReason: entry.item.recommended_reason,
+            creativeBriefJson: creativeBriefFor(entry.item, current.sequence, request, context),
             duplicateLevel: entry.judgment.duplicate_level,
             similarContentsJson: entry.retrieval.top10.map(({ contentId, title, topic, angle, similarity, ruleScore }) => ({ contentId, title, topic, angle, similarity, ruleScore })),
             duplicateReason: entry.judgment.reason, alternativeAnglesJson: entry.judgment.alternative_angles,

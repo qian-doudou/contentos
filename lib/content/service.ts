@@ -6,13 +6,14 @@ import { contentTypes } from '@/db/constants';
 import { permissionService } from '@/lib/auth/permissions';
 import { ApiError } from '@/lib/api/envelope';
 import {
-  accountOptionSchema, contentDetailSchema, contentListItemSchema, contentListSchema, contentOptionsSchema,
-  contentHistorySchema, contentQuerySchema, contentSchema, contentStatusHistoryItemSchema, contentStatusLogSchema,
+  accountOptionSchema, contentBoardQuerySchema, contentBoardSchema, contentDetailSchema, contentListItemSchema,
+  contentListSchema, contentOptionsSchema, contentHistorySchema, contentQuerySchema, contentSchema,
+  contentStatusHistoryItemSchema, contentStatusLogSchema,
   contentTransitionResultSchema, createContentSchema, createMonthlyPlanSchema, monthlyPlanDetailSchema,
   monthlyPlanListItemSchema, monthlyPlanListSchema, monthlyPlanSchema, operatorOptionSchema, planOptionSchema,
   planQuerySchema, transitionContentInputSchema, updateContentSchema, updateMonthlyPlanSchema,
 } from './contracts';
-import { assertContentTransition, deadlineFlags } from './workflow';
+import { assertContentTransition, closedContentStatuses, deadlineFlags, dueSoonWindowMs, kanbanColumns } from './workflow';
 
 type Database = BetterSQLite3Database<typeof tables>;
 const missing = () => new ApiError(404, 'NOT_FOUND', '记录不存在或不属于当前组织');
@@ -207,6 +208,56 @@ export function contentService(
     ...(value.plannedPublishDate ? { plannedPublishDate: new Date(value.plannedPublishDate).toISOString() } : {}),
     ...(value.deadline ? { deadline: new Date(value.deadline).toISOString() } : {}),
   });
+  const contentQueryContext = (query: z.infer<typeof contentQuerySchema>) => {
+    const options = contentOptions();
+    const readableClientIds = [...new Set(options.accounts.map(item => item.clientId))];
+    if (query.clientId) {
+      const row = db.select().from(tables.clients).where(and(
+        eq(tables.clients.organizationId, organizationId), eq(tables.clients.id, query.clientId),
+      )).get();
+      if (!row) throw missing();
+      permissions.requireClientRead(row.id);
+    }
+    const selectedAccount = query.accountId ? account(query.accountId) : null;
+    const selectedBrand = query.brandId ? brand(query.brandId) : null;
+    const selectedStore = query.storeId ? store(query.storeId) : null;
+    const selectedPlan = query.monthlyPlanId ? plan(query.monthlyPlanId) : null;
+    if (selectedAccount && selectedBrand && selectedAccount.brandId !== selectedBrand.id)
+      throw new ApiError(409, 'HIERARCHY_MISMATCH', '所选品牌不属于所选账号');
+    if (selectedAccount && selectedStore && selectedAccount.storeId !== selectedStore.id)
+      throw new ApiError(409, 'HIERARCHY_MISMATCH', '所选门店不属于所选账号');
+    if (selectedPlan && selectedAccount && selectedPlan.accountId !== selectedAccount.id)
+      throw new ApiError(409, 'PLAN_ACCOUNT_MISMATCH', '所选月度计划不属于所选账号');
+    if (query.operatorId && !db.select({ id: tables.users.id }).from(tables.users).where(and(
+      eq(tables.users.organizationId, organizationId), eq(tables.users.id, query.operatorId),
+    )).get()) throw missing();
+    const predicates = [eq(tables.contents.organizationId, organizationId)];
+    predicates.push(readableClientIds.length ? inArray(tables.contents.clientId, readableClientIds) : sql`0 = 1`);
+    if (query.search) predicates.push(or(
+      sql`instr(lower(${tables.contents.title}), lower(${query.search})) > 0`,
+      sql`instr(lower(${tables.contents.topic}), lower(${query.search})) > 0`,
+    )!);
+    if (query.clientId) predicates.push(eq(tables.contents.clientId, query.clientId));
+    if (query.brandId) predicates.push(eq(tables.contents.brandId, query.brandId));
+    if (query.storeId) predicates.push(eq(tables.contents.storeId, query.storeId));
+    if (query.accountId) predicates.push(eq(tables.contents.accountId, query.accountId));
+    if (query.monthlyPlanId) predicates.push(eq(tables.contents.monthlyPlanId, query.monthlyPlanId));
+    if (query.contentType) predicates.push(eq(tables.contents.contentType, query.contentType));
+    if (query.contentGoal) predicates.push(eq(tables.contents.contentGoal, query.contentGoal));
+    if (query.priority) predicates.push(eq(tables.contents.priority, query.priority));
+    if (query.operatorId) predicates.push(eq(tables.contents.operatorId, query.operatorId));
+    if (query.status) predicates.push(eq(tables.contents.status, query.status));
+    if (query.statuses) predicates.push(inArray(tables.contents.status, query.statuses));
+    if (query.deadlineState === 'dueSoon') {
+      const currentTime = now().getTime();
+      predicates.push(gte(tables.contents.deadline, new Date(currentTime).toISOString()));
+      predicates.push(lte(tables.contents.deadline, new Date(currentTime + dueSoonWindowMs).toISOString()));
+      for (const status of closedContentStatuses) predicates.push(ne(tables.contents.status, status));
+    }
+    if (query.plannedFrom) predicates.push(gte(tables.contents.plannedPublishDate, query.plannedFrom));
+    if (query.plannedTo) predicates.push(lte(tables.contents.plannedPublishDate, query.plannedTo));
+    return { options, predicates };
+  };
 
   return {
     listPlans(input: unknown) {
@@ -278,46 +329,7 @@ export function contentService(
     },
     listContents(input: unknown) {
       const query = contentQuerySchema.parse(input);
-      const options = contentOptions();
-      const readableClientIds = [...new Set(options.accounts.map(item => item.clientId))];
-      if (query.clientId) {
-        const row = db.select().from(tables.clients).where(and(
-          eq(tables.clients.organizationId, organizationId), eq(tables.clients.id, query.clientId),
-        )).get();
-        if (!row) throw missing();
-        permissions.requireClientRead(row.id);
-      }
-      const selectedAccount = query.accountId ? account(query.accountId) : null;
-      const selectedBrand = query.brandId ? brand(query.brandId) : null;
-      const selectedStore = query.storeId ? store(query.storeId) : null;
-      const selectedPlan = query.monthlyPlanId ? plan(query.monthlyPlanId) : null;
-      if (selectedAccount && selectedBrand && selectedAccount.brandId !== selectedBrand.id)
-        throw new ApiError(409, 'HIERARCHY_MISMATCH', '所选品牌不属于所选账号');
-      if (selectedAccount && selectedStore && selectedAccount.storeId !== selectedStore.id)
-        throw new ApiError(409, 'HIERARCHY_MISMATCH', '所选门店不属于所选账号');
-      if (selectedPlan && selectedAccount && selectedPlan.accountId !== selectedAccount.id)
-        throw new ApiError(409, 'PLAN_ACCOUNT_MISMATCH', '所选月度计划不属于所选账号');
-      if (query.operatorId && !db.select({ id: tables.users.id }).from(tables.users).where(and(
-        eq(tables.users.organizationId, organizationId), eq(tables.users.id, query.operatorId),
-      )).get()) throw missing();
-      const predicates = [eq(tables.contents.organizationId, organizationId)];
-      predicates.push(readableClientIds.length ? inArray(tables.contents.clientId, readableClientIds) : sql`0 = 1`);
-      if (query.search) predicates.push(or(
-        sql`instr(lower(${tables.contents.title}), lower(${query.search})) > 0`,
-        sql`instr(lower(${tables.contents.topic}), lower(${query.search})) > 0`,
-      )!);
-      if (query.clientId) predicates.push(eq(tables.contents.clientId, query.clientId));
-      if (query.brandId) predicates.push(eq(tables.contents.brandId, query.brandId));
-      if (query.storeId) predicates.push(eq(tables.contents.storeId, query.storeId));
-      if (query.accountId) predicates.push(eq(tables.contents.accountId, query.accountId));
-      if (query.monthlyPlanId) predicates.push(eq(tables.contents.monthlyPlanId, query.monthlyPlanId));
-      if (query.contentType) predicates.push(eq(tables.contents.contentType, query.contentType));
-      if (query.contentGoal) predicates.push(eq(tables.contents.contentGoal, query.contentGoal));
-      if (query.priority) predicates.push(eq(tables.contents.priority, query.priority));
-      if (query.operatorId) predicates.push(eq(tables.contents.operatorId, query.operatorId));
-      if (query.status) predicates.push(eq(tables.contents.status, query.status));
-      if (query.plannedFrom) predicates.push(gte(tables.contents.plannedPublishDate, query.plannedFrom));
-      if (query.plannedTo) predicates.push(lte(tables.contents.plannedPublishDate, query.plannedTo));
+      const { options, predicates } = contentQueryContext(query);
       return db.transaction(() => contentListSchema.parse({
         items: db.select().from(tables.contents).where(and(...predicates))
           .orderBy(desc(tables.contents.plannedPublishDate), desc(tables.contents.createdAt), asc(tables.contents.id))
@@ -326,6 +338,35 @@ export function contentService(
         total: db.select({ value: count() }).from(tables.contents).where(and(...predicates)).get()?.value ?? 0,
         page: query.page,
         pageSize: query.pageSize,
+        options,
+        permissions: { canWrite: options.accounts.some(item => item.canWrite) },
+      }));
+    },
+    contentBoard(input: unknown) {
+      const query = contentBoardQuerySchema.parse(input);
+      const { options, predicates } = contentQueryContext(query);
+      const selectedColumn = query.column ? kanbanColumns.find(column => column.id === query.column) : null;
+      if (query.column && !selectedColumn)
+        throw new ApiError(400, 'INVALID_BOARD_COLUMN', '看板分栏不存在');
+      const columns = selectedColumn ? [selectedColumn] : kanbanColumns;
+      return db.transaction(() => contentBoardSchema.parse({
+        columns: columns.map(column => {
+          const columnPredicates = [...predicates, inArray(tables.contents.status, [...column.statuses])];
+          const page = selectedColumn ? query.page : 1;
+          return {
+            id: column.id,
+            label: column.label,
+            statuses: [...column.statuses],
+            items: db.select().from(tables.contents).where(and(...columnPredicates))
+              .orderBy(desc(tables.contents.plannedPublishDate), desc(tables.contents.createdAt), asc(tables.contents.id))
+              .limit(query.pageSize).offset((page - 1) * query.pageSize).all()
+              .map(row => enrichContent(contentSchema.parse(row), options)),
+            total: db.select({ value: count() }).from(tables.contents).where(and(...columnPredicates)).get()?.value ?? 0,
+            page,
+            pageSize: query.pageSize,
+          };
+        }),
+        total: db.select({ value: count() }).from(tables.contents).where(and(...predicates)).get()?.value ?? 0,
         options,
         permissions: { canWrite: options.accounts.some(item => item.canWrite) },
       }));

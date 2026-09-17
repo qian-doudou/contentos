@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3';
+import { inArray } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -175,6 +176,70 @@ describe('content master records', () => {
       accountId: first.account.id, monthlyPlanId: plan.id, title: '错误计划', contentType: 'persona',
       contentGoal: 'exposure', operatorId: ids.operator,
     }), 409, 'PLAN_ACCOUNT_MISMATCH');
+  });
+
+  it('queries and paginates every board column independently from the table page', () => {
+    const data = hierarchy(ids.organizationA, ids.owner, 'board');
+    assign(data.client.id, ids.operator);
+    const service = contentService(db, ids.organizationA, ids.owner);
+    const rows = Array.from({ length: 26 }, (_, index) => service.createContent({
+      accountId: data.account.id,
+      title: `看板内容 ${index + 1}`,
+      contentType: 'persona',
+      contentGoal: 'exposure',
+      operatorId: ids.operator,
+    }));
+    db.update(schema.contents).set({ status: 'PUBLISHED', publishedAt: '2026-09-07T02:00:00.000Z' })
+      .where(inArray(schema.contents.id, rows.slice(13).map(row => row.id))).run();
+
+    const board = service.contentBoard({ page: 2, pageSize: 12 });
+    const ideas = board.columns.find(column => column.id === 'ideas');
+    const published = board.columns.find(column => column.id === 'published');
+    expect(board.total).toBe(26);
+    expect(ideas).toMatchObject({ total: 13, page: 1, pageSize: 12 });
+    expect(ideas?.items).toHaveLength(12);
+    expect(published).toMatchObject({ total: 13, page: 1, pageSize: 12 });
+    expect(published?.items).toHaveLength(12);
+
+    const publishedPageTwo = service.contentBoard({ column: 'published', page: 2, pageSize: 12 });
+    expect(publishedPageTwo.total).toBe(26);
+    expect(publishedPageTwo.columns).toHaveLength(1);
+    expect(publishedPageTwo.columns[0]).toMatchObject({ id: 'published', total: 13, page: 2, pageSize: 12 });
+    expect(publishedPageTwo.columns[0].items).toHaveLength(1);
+  });
+
+  it('matches workbench grouped-status and due-soon filters exactly', () => {
+    const data = hierarchy(ids.organizationA, ids.owner, 'dashboard-filter');
+    assign(data.client.id, ids.operator);
+    const service = contentService(db, ids.organizationA, ids.owner, {
+      now: () => new Date('2026-09-07T01:00:00.000Z'),
+    });
+    const rows = Array.from({ length: 6 }, (_, index) => service.createContent({
+      accountId: data.account.id,
+      title: `工作台筛选 ${index + 1}`,
+      contentType: 'persona',
+      contentGoal: 'exposure',
+      operatorId: ids.operator,
+    }));
+    const setContent = (index: number, values: Partial<typeof schema.contents.$inferInsert>) =>
+      db.update(schema.contents).set(values).where(inArray(schema.contents.id, [rows[index].id])).run();
+    setContent(1, { status: 'SCRIPTING' });
+    setContent(2, { status: 'WAITING_APPROVAL' });
+    setContent(3, { status: 'WAITING_REVIEW' });
+    setContent(4, { status: 'EDITING', deadline: '2026-09-08T01:00:00.000Z' });
+    setContent(5, { status: 'PUBLISHED', deadline: '2026-09-08T01:00:00.000Z' });
+
+    expect(service.listContents({ statuses: 'IDEA,SCRIPTING' }).items.map(row => row.status).sort())
+      .toEqual(['IDEA', 'SCRIPTING']);
+    expect(service.listContents({ statuses: 'WAITING_APPROVAL,WAITING_REVIEW' }).items.map(row => row.status).sort())
+      .toEqual(['WAITING_APPROVAL', 'WAITING_REVIEW']);
+    expect(service.listContents({ deadlineState: 'dueSoon' }).items.map(row => row.id)).toEqual([rows[4].id]);
+
+    const approvalBoard = service.contentBoard({ statuses: 'WAITING_APPROVAL,WAITING_REVIEW' });
+    expect(approvalBoard.total).toBe(2);
+    expect(approvalBoard.columns.find(column => column.id === 'approval')?.total).toBe(1);
+    expect(approvalBoard.columns.find(column => column.id === 'publish')?.total).toBe(1);
+    expect(() => service.listContents({ statuses: 'IDEA,NOT_A_STATUS' })).toThrow();
   });
 });
 

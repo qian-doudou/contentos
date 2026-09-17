@@ -2,6 +2,7 @@ import { z } from 'zod';
 import {
   businessStatuses, contentGoals, contentPriorities, contentStatuses, contentStatusTriggers, contentTypes, hookTypes,
 } from '@/db/constants';
+import { creativeBriefSchema } from '@/lib/creative/contracts';
 
 const uuid = z.uuid();
 const timestamp = z.iso.datetime({ offset: true });
@@ -12,6 +13,9 @@ const list = z.array(z.string().trim().min(1).max(300)).max(100);
 const businessStatus = z.enum(businessStatuses);
 const contentStatus = z.enum(contentStatuses);
 const percentage = z.number().int().min(0).max(100);
+const contentStatusListQuery = z.string().trim()
+  .transform(value => value.split(',').map(item => item.trim()).filter(Boolean))
+  .pipe(z.array(contentStatus).min(1).max(contentStatuses.length));
 
 export const contentMixSchema = z.partialRecord(z.enum(contentTypes), percentage);
 type MixCandidate = { plannedContentCount: number; contentMixJson: Partial<Record<(typeof contentTypes)[number], number>> };
@@ -98,6 +102,7 @@ export const contentSchema = contentEditableFields.extend({
   currentEditVersionId: uuid.nullable(),
   activeApprovedEditVersionId: uuid.nullable(),
   aiReviewStatus: z.string().trim().max(80).nullable(),
+  creativeBriefJson: creativeBriefSchema.nullable().default(null),
   createdBy: uuid,
 });
 
@@ -112,7 +117,21 @@ export const contentQuerySchema = z.object({
   storeId: uuid.optional(), accountId: uuid.optional(), monthlyPlanId: uuid.optional(),
   contentType: z.enum(contentTypes).optional(), contentGoal: z.enum(contentGoals).optional(),
   priority: z.enum(contentPriorities).optional(), operatorId: uuid.optional(), status: contentStatus.optional(),
+  statuses: contentStatusListQuery.optional(), deadlineState: z.literal('dueSoon').optional(),
   plannedFrom: timestamp.optional(), plannedTo: timestamp.optional(),
+  page: z.coerce.number().int().min(1).max(100000).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(12),
+}).strict().refine(value => !value.plannedFrom || !value.plannedTo || value.plannedFrom <= value.plannedTo, {
+  path: ['plannedTo'], message: '结束日期不得早于开始日期',
+});
+export const contentBoardQuerySchema = z.object({
+  search: z.string().trim().max(160).optional(), clientId: uuid.optional(), brandId: uuid.optional(),
+  storeId: uuid.optional(), accountId: uuid.optional(), monthlyPlanId: uuid.optional(),
+  contentType: z.enum(contentTypes).optional(), contentGoal: z.enum(contentGoals).optional(),
+  priority: z.enum(contentPriorities).optional(), operatorId: uuid.optional(), status: contentStatus.optional(),
+  statuses: contentStatusListQuery.optional(), deadlineState: z.literal('dueSoon').optional(),
+  plannedFrom: timestamp.optional(), plannedTo: timestamp.optional(),
+  column: z.string().trim().min(1).max(32).optional(),
   page: z.coerce.number().int().min(1).max(100000).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(12),
 }).strict().refine(value => !value.plannedFrom || !value.plannedTo || value.plannedFrom <= value.plannedTo, {
@@ -151,6 +170,14 @@ export const contentListItemSchema = contentSchema.extend({
 });
 export const contentListSchema = z.object({
   items: z.array(contentListItemSchema), total: z.number().int().nonnegative(), page: z.number().int(), pageSize: z.number().int(),
+  options: contentOptionsSchema, permissions: contentAccessSchema,
+});
+export const contentBoardColumnSchema = z.object({
+  id: z.string(), label: z.string(), statuses: z.array(contentStatus), items: z.array(contentListItemSchema),
+  total: z.number().int().nonnegative(), page: z.number().int().positive(), pageSize: z.number().int().positive(),
+});
+export const contentBoardSchema = z.object({
+  columns: z.array(contentBoardColumnSchema), total: z.number().int().nonnegative(),
   options: contentOptionsSchema, permissions: contentAccessSchema,
 });
 export const contentDetailSchema = z.object({
@@ -214,6 +241,8 @@ export type MonthlyPlanList = z.infer<typeof monthlyPlanListSchema>;
 export type MonthlyPlanDetail = z.infer<typeof monthlyPlanDetailSchema>;
 export type Content = z.infer<typeof contentSchema>;
 export type ContentList = z.infer<typeof contentListSchema>;
+export type ContentBoard = z.infer<typeof contentBoardSchema>;
+export type ContentBoardColumn = z.infer<typeof contentBoardColumnSchema>;
 export type ContentDetail = z.infer<typeof contentDetailSchema>;
 export type ContentOptions = z.infer<typeof contentOptionsSchema>;
 export type ContentStatusLog = z.infer<typeof contentStatusLogSchema>;

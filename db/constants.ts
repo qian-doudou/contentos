@@ -1,6 +1,25 @@
 export const organizationStatuses = ['active', 'inactive'] as const;
 export const userRoles = ['owner', 'admin', 'operator', 'photographer', 'editor', 'viewer'] as const;
 export const userStatuses = ['active', 'inactive'] as const;
+export const permissionCodes = [
+  'master_data.write',
+  'team.read',
+  'team.manage',
+  'skills.read',
+  'skills.write',
+  'ai.test',
+  'ai.settings',
+  'runs.read',
+  'ops.read',
+  'eval.read',
+  'eval.rate',
+  'eval.manage',
+  'memory.read',
+  'memory.write',
+  'context.build',
+  'system.dangerous',
+] as const;
+export const permissionEffects = ['allow', 'deny'] as const;
 export const runTypes = ['production', 'test', 'eval'] as const;
 export const runStatuses = [
   'queued', 'running', 'completed', 'completed_with_warnings', 'manual_review_required', 'failed', 'cancelled',

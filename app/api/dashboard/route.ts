@@ -16,11 +16,12 @@ export async function GET(request: Request) {
     const organization = permissions.organization;
     const organizationId = organization.id;
     const canReadOrganizationOverview = permissions.has('team.read');
+    const canReadRuns = permissions.has('runs.read');
 
     const userRows = canReadOrganizationOverview
       ? db.select().from(users).where(eq(users.organizationId, organizationId)).orderBy(asc(users.createdAt)).all()
       : [permissions.actor];
-    const runRows = canReadOrganizationOverview
+    const runRows = canReadRuns
       ? db.select().from(runs).where(eq(runs.organizationId, organizationId)).orderBy(desc(runs.createdAt)).limit(20).all()
       : [];
     const steps = runRows.length
@@ -60,6 +61,8 @@ export async function GET(request: Request) {
       permissions: {
         canResetDemo: permissions.has('system.dangerous'),
         canReadTeam: permissions.has('team.read'),
+        canReadRuns,
+        workspaceAccess: permissions.workspaceAccess(),
       },
       generatedAt: new Date().toISOString(),
     });

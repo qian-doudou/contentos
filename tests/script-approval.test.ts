@@ -11,6 +11,7 @@ import {
   skills, stores, users,
 } from '@/db/schema';
 import { ApiError } from '@/lib/api/envelope';
+import { shootingRequirementsByMethod, storyStructureByInnovation } from '@/lib/creative/contracts';
 import { getLlmConfig, OpenAICompatibleClient } from '@/lib/llm/client';
 import { qualitySkillInputJsonSchema, qualitySkillOutputJsonSchema } from '@/lib/planner/contracts';
 import {
@@ -194,6 +195,24 @@ describe('script versions and AI generation', () => {
     expect(db.select().from(aiUsageLogs).where(eq(aiUsageLogs.runId, result.runId)).all().map((usage) => [usage.skillCode, usage.billedPoints])).toEqual([
       ['script_generator', 3], ['quality_checker', 0],
     ]);
+  });
+
+  it('uses the selected creative brief in fallback script duration, shooting method and on-camera role', async () => {
+    db.update(contents).set({ creativeBriefJson: {
+      sellingPoint: '本地羊肉当天现切', sellingPointOptions: ['本地羊肉当天现切', '现切过程透明'],
+      creativeConcept: '用员工问答展示现切标准', audienceMoment: '顾客不知道如何判断时',
+      storyStructure: storyStructureByInnovation.bold, targetDurationSeconds: 60,
+      shootingMethod: 'interview', shootingDifficulty: 'standard', onCameraRole: 'staff',
+      shootingRequirements: shootingRequirementsByMethod.interview, ctaStrategy: '引导收藏并留言问题',
+      innovationLevel: 'bold', hookType: 'question', hookText: '这盘羊肉新不新鲜怎么看？',
+      hookOptions: [{ type: 'question', text: '这盘羊肉新不新鲜怎么看？' }],
+    } }).where(eq(contents.id, ids.content)).run();
+
+    const result = await service().generate(ids.content, {});
+    const script = result.workspace.versions[0].scriptJson;
+    expect(script.spoken_script).toContain('我是店里的工作人员');
+    expect(script.shots.map(shot => shot.duration_seconds)).toEqual([12, 36, 12]);
+    expect(script.shots[1].visual).toContain('问答访谈');
   });
 
   it('keeps V1/V2 immutable and preserves an old approved version until the new draft is submitted', () => {

@@ -11,6 +11,7 @@ import {
   runSteps, runs, skills, stores, users,
 } from '@/db/schema';
 import { ApiError } from '@/lib/api/envelope';
+import { shootingDifficultyByMethod, shootingRequirementsByMethod, storyStructureByInnovation } from '@/lib/creative/contracts';
 import { duplicateJudgeInputJsonSchema, duplicateJudgeOutputJsonSchema } from '@/lib/history/contracts';
 import { getLlmConfig, OpenAICompatibleClient } from '@/lib/llm/client';
 import {
@@ -155,6 +156,12 @@ describe('AI Content Planner', () => {
     const result = await service().generate({ accountId: ids.account, plannedCount: 3, shootDate: null, primaryGoal: 'conversion', specialRequirements: null });
     expect(result).toMatchObject({ status: 'awaiting_selection', run: { status: 'manual_review_required' }, plannedCount: 3 });
     expect(result.candidates).toHaveLength(3);
+    expect(result.candidates[0].creativeBrief).toMatchObject({
+      sellingPoint: expect.any(String), creativeConcept: expect.any(String), audienceMoment: expect.any(String),
+      targetDurationSeconds: expect.any(Number), shootingMethod: expect.any(String), innovationLevel: expect.any(String),
+    });
+    expect(result.candidates[0].creativeBrief.hookOptions.length).toBeGreaterThanOrEqual(2);
+    expect(result.candidates[0].creativeBrief.sellingPointOptions.length).toBeGreaterThanOrEqual(2);
     expect(result.candidates).toEqual(expect.arrayContaining([
       expect.objectContaining({
         contentType: 'product',
@@ -175,6 +182,71 @@ describe('AI Content Planner', () => {
     expect(db.select().from(organizationAiQuotas).where(eq(organizationAiQuotas.id, ids.quota)).get()?.usedPoints).toBe(2);
     expect(db.select().from(aiPointLedger).where(eq(aiPointLedger.runId, result.runId)).all()).toHaveLength(1);
     expect(db.select().from(runs).where(eq(runs.id, result.runId)).get()?.status).toBe('completed');
+  });
+
+  it('persists user-adjusted duration, shooting setup, innovation, selling point and hook for script generation', async () => {
+    const result = await service().generate({
+      accountId: ids.account, plannedCount: 3, shootDate: null, primaryGoal: 'trust',
+      specialRequirements: '创意强度：分别提供稳妥型、创新型和突破型。\n出镜条件：ai_recommended。',
+    });
+    const candidate = result.candidates.find(item => item.selectable)!;
+    const hook = candidate.creativeBrief.hookOptions[1];
+    const sellingPoint = candidate.creativeBrief.sellingPointOptions[1];
+    const method = 'interview' as const;
+    const level = 'bold' as const;
+    const creativeBrief = {
+      ...candidate.creativeBrief,
+      targetDurationSeconds: 60,
+      shootingMethod: method,
+      shootingDifficulty: shootingDifficultyByMethod[method],
+      shootingRequirements: shootingRequirementsByMethod[method],
+      onCameraRole: 'staff' as const,
+      innovationLevel: level,
+      storyStructure: storyStructureByInnovation[level],
+      sellingPoint,
+      hookType: hook.type,
+      hookText: hook.text,
+    };
+
+    const saved = service().persist(result.id, {
+      candidateIds: [candidate.id], candidateOverrides: [{ candidateId: candidate.id, creativeBrief }],
+    });
+    const content = db.select().from(contents).where(eq(contents.id, saved.contentIds[0])).get()!;
+    expect(content).toMatchObject({
+      hookType: hook.type, hookText: hook.text, coreMessage: sellingPoint, productText: sellingPoint,
+      creativeBriefJson: expect.objectContaining({
+        targetDurationSeconds: 60, shootingMethod: 'interview', shootingDifficulty: 'standard',
+        onCameraRole: 'staff', innovationLevel: 'bold', sellingPoint, hookText: hook.text,
+      }),
+    });
+  });
+
+  it('rejects tampered creative fields without finalizing or billing the planning session', async () => {
+    const result = await service().generate({ accountId: ids.account, plannedCount: 1, shootDate: null, primaryGoal: 'trust', specialRequirements: null });
+    const candidate = result.candidates[0];
+    await expectApiError(() => service().persist(result.id, {
+      candidateIds: [candidate.id],
+      candidateOverrides: [{ candidateId: candidate.id, creativeBrief: { ...candidate.creativeBrief, creativeConcept: '前端擅自替换的创意' } }],
+    }), 400, 'INVALID_CREATIVE_OVERRIDE');
+    expect(db.select().from(plannerSessions).where(eq(plannerSessions.id, result.id)).get()?.status).toBe('awaiting_selection');
+    expect(db.select().from(organizationAiQuotas).where(eq(organizationAiQuotas.id, ids.quota)).get()?.usedPoints).toBe(0);
+  });
+
+  it('generates distinct effect-and-topic choices for a refreshed direction batch', async () => {
+    const first = await service().generate({
+      accountId: ids.account, plannedCount: 3, shootDate: null, primaryGoal: 'conversion',
+      specialRequirements: 'AI 方向批次：1。自主决定每条候选的视频效果与重点内容。',
+    });
+    const refreshed = await service().generate({
+      accountId: ids.account, plannedCount: 3, shootDate: null, primaryGoal: 'conversion',
+      specialRequirements: `AI 方向批次：2。避开上一批：${first.candidates.map(candidate => candidate.title).join('；')}`,
+    });
+
+    expect(new Set(first.candidates.map(candidate => candidate.contentGoal)).size).toBe(3);
+    expect(new Set(refreshed.candidates.map(candidate => candidate.contentGoal)).size).toBe(3);
+    expect(refreshed.candidates.map(candidate => candidate.title))
+      .not.toEqual(first.candidates.map(candidate => candidate.title));
+    expect(db.select().from(organizationAiQuotas).where(eq(organizationAiQuotas.id, ids.quota)).get()?.usedPoints).toBe(0);
   });
 
   it('blocks high-duplicate selection and preserves candidates until explicit save', async () => {

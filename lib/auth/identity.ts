@@ -19,5 +19,6 @@ export function identityData(db: Database, organizationId: string, userId: strin
     currentUser: permissions.actor,
     users,
     switchingEnabled,
+    workspaceAccess: permissions.workspaceAccess(),
   });
 }

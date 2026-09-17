@@ -6,6 +6,9 @@ import { aiUsageLogSchema } from '@/lib/ai/contracts';
 import { ApiError } from '@/lib/api/envelope';
 import { permissionService } from '@/lib/auth/permissions';
 import {
+  approvalStatuses, closedContentStatuses, dueSoonWindowMs, scriptDraftStatuses, type ContentStatus,
+} from '@/lib/content/workflow';
+import {
   aiCostDataSchema,
   aiCostQuerySchema,
   deliveryPlanSchema,
@@ -25,9 +28,10 @@ import { parseTraceValue, sanitizeTrace, snapshotIdsFrom } from './trace-safety'
 type Database = BetterSQLite3Database<typeof tables>;
 
 const SHANGHAI_TIME_ZONE = 'Asia/Shanghai';
-const CLOSED_CONTENT_STATUSES = new Set(['PUBLISHED', 'REVIEWED']);
+const CLOSED_CONTENT_STATUSES = new Set<ContentStatus>(closedContentStatuses);
 const PENDING_EDIT_STATUSES = new Set(['SHOT', 'EDITING', 'REVISION']);
-const APPROVAL_STATUSES = new Set(['WAITING_APPROVAL', 'WAITING_REVIEW']);
+const APPROVAL_STATUSES = new Set<ContentStatus>(approvalStatuses);
+const SCRIPT_DRAFT_STATUSES = new Set<ContentStatus>(scriptDraftStatuses);
 
 function json(value: unknown) {
   return JSON.stringify(value);
@@ -454,7 +458,7 @@ export function opsService(
       const at = now();
       const nowMs = at.getTime();
       const today = dateOnly(localParts(at));
-      const dueSoonLimit = nowMs + 48 * 60 * 60 * 1000;
+      const dueSoonLimit = nowMs + dueSoonWindowMs;
       const contentRows = visibleContentRows();
       const shootRows = visibleShootRows().filter((row) => row.shootDate === today
         && row.status !== 'cancelled' && row.status !== 'rescheduled');
@@ -492,12 +496,17 @@ export function opsService(
       for (const content of contentRows) {
         const deadlineMs = content.deadline ? Date.parse(content.deadline) : null;
         const clientName = clientMap.get(content.clientId) ?? '客户';
-        const base = { id: `content:${content.id}`, detail: `${clientName} · ${content.status}`, href: `/contents/${content.id}`, dueAt: content.deadline };
+        const base = {
+          id: `content:${content.id}`,
+          detail: `${clientName} · ${content.status}`,
+          href: permissions.actor.role === 'editor' ? `/edits/${content.id}` : `/contents/${content.id}`,
+          dueAt: content.deadline,
+        };
         if (deadlineMs !== null && deadlineMs < nowMs && !CLOSED_CONTENT_STATUSES.has(content.status)) {
           tasks.set(base.id, { ...base, category: 'deadline', title: `已延期：${content.title}`, urgency: 'overdue' });
         } else if (deadlineMs !== null && deadlineMs <= dueSoonLimit && !CLOSED_CONTENT_STATUSES.has(content.status)) {
           tasks.set(base.id, { ...base, category: 'deadline', title: `即将延期：${content.title}`, urgency: 'due_soon' });
-        } else if (content.status === 'IDEA' || content.status === 'SCRIPTING') {
+        } else if (SCRIPT_DRAFT_STATUSES.has(content.status)) {
           tasks.set(base.id, { ...base, category: 'script', title: `待写脚本：${content.title}`, urgency: 'normal' });
         } else if (APPROVAL_STATUSES.has(content.status) && permissions.actor.role !== 'editor') {
           tasks.set(base.id, { ...base, category: 'approval', title: `待审核：${content.title}`, urgency: 'normal' });
@@ -546,7 +555,7 @@ export function opsService(
         },
         counts: {
           todayTodo: sortedTasks.length,
-          scriptsToWrite: contentRows.filter((row) => row.status === 'IDEA' || row.status === 'SCRIPTING').length,
+          scriptsToWrite: contentRows.filter((row) => SCRIPT_DRAFT_STATUSES.has(row.status)).length,
           pendingApproval: contentRows.filter((row) => APPROVAL_STATUSES.has(row.status)).length,
           todayShoots: shootRows.length,
           pendingEdits: contentRows.filter((row) => PENDING_EDIT_STATUSES.has(row.status)).length,

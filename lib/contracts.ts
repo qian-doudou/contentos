@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { organizationSchema, runSchema, runStepSchema, userSchema } from '@/db/validation';
 import { personalWorkbenchSchema } from '@/lib/ops/contracts';
+import { workspaceAccessSchema } from '@/lib/auth/contracts';
 
 export const apiErrorSchema = z.object({
   code: z.string(),
@@ -24,7 +25,12 @@ export const dashboardDataSchema = z.object({
     llmMode: z.enum(['mock', 'live']),
     phase: z.number().int().positive(),
   }),
-  permissions: z.object({ canResetDemo: z.boolean(), canReadTeam: z.boolean() }),
+  permissions: z.object({
+    canResetDemo: z.boolean(),
+    canReadTeam: z.boolean(),
+    canReadRuns: z.boolean(),
+    workspaceAccess: workspaceAccessSchema,
+  }),
   generatedAt: z.iso.datetime({ offset: true }),
 });
 

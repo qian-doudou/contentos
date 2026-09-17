@@ -132,7 +132,7 @@ export function EditorDialog(props: Props & { label?: string }) {
   const [open, setOpen] = useState(false);
   const label = props.label || `${props.initial ? '编辑' : '新增'}${kindLabels[props.kind]}`;
   return <Dialog open={open} onOpenChange={setOpen}>
-    <DialogTrigger render={<Button variant="outline" />}>{label}</DialogTrigger>
+    <DialogTrigger render={<Button type="button" variant="outline" />}>{label}</DialogTrigger>
     <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
       <DialogHeader><DialogTitle>{label}</DialogTitle><DialogDescription>填写业务档案，保存后立即生效。列表字段支持每行一项。</DialogDescription></DialogHeader>
       {open && <MasterDataForm {...props} onSaved={id => { setOpen(false); props.onSaved(id); }} />}

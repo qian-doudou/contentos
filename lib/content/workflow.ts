@@ -4,6 +4,11 @@ import { ApiError } from '@/lib/api/envelope';
 export type ContentStatus = (typeof contentStatuses)[number];
 export type ContentStatusTrigger = (typeof contentStatusTriggers)[number];
 
+export const scriptDraftStatuses = ['IDEA', 'SCRIPTING'] as const satisfies readonly ContentStatus[];
+export const approvalStatuses = ['WAITING_APPROVAL', 'WAITING_REVIEW'] as const satisfies readonly ContentStatus[];
+export const closedContentStatuses = ['PUBLISHED', 'REVIEWED'] as const satisfies readonly ContentStatus[];
+export const dueSoonWindowMs = 48 * 60 * 60 * 1000;
+
 type TransitionRule = { from: ContentStatus; to: ContentStatus; trigger: 'manual' | 'approval' | 'shoot' | 'edit' | 'publish' };
 
 export const contentTransitionRules = [
@@ -56,9 +61,10 @@ export function kanbanColumnId(status: ContentStatus) {
 }
 
 export function deadlineFlags(deadline: string | null, status: ContentStatus, now = new Date()) {
-  if (!deadline || status === 'PUBLISHED' || status === 'REVIEWED') return { overdue: false, dueSoon: false };
+  if (!deadline || closedContentStatuses.includes(status as (typeof closedContentStatuses)[number]))
+    return { overdue: false, dueSoon: false };
   const deadlineMs = Date.parse(deadline);
   const nowMs = now.getTime();
   if (deadlineMs < nowMs) return { overdue: true, dueSoon: false };
-  return { overdue: false, dueSoon: deadlineMs - nowMs <= 48 * 60 * 60 * 1000 };
+  return { overdue: false, dueSoon: deadlineMs - nowMs <= dueSoonWindowMs };
 }

@@ -1,31 +1,22 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { accountDetailSchema, hierarchySchema } from '@/lib/master-data/contracts';
-import { MemoryPanel } from '@/components/contentos/memory-pages';
+import { accountDetailSchema } from '@/lib/master-data/contracts';
 import { accountTypeLabels, BusinessBadge, ErrorData, LoadingData, PageHeading, Tags, useApiData } from './common';
-import { EditorDialog } from './editor';
 
 export function AccountDetailPage({ id }: { id: string }) {
   const state = useApiData('/api/accounts/' + id, accountDetailSchema);
-  const hierarchy = useApiData('/api/accounts', hierarchySchema);
-  const [notice, setNotice] = useState('');
-  if (state.loading || hierarchy.loading) return <LoadingData />;
+  if (state.loading) return <LoadingData />;
   if (state.error) return <ErrorData error={state.error} retry={state.reload} />;
-  if (hierarchy.error) return <ErrorData error={hierarchy.error} retry={hierarchy.reload} />;
-  if (!state.data || !hierarchy.data) return null;
+  if (!state.data) return null;
   const { account, client, brand, store, contentStats } = state.data;
   return <div className="space-y-6">
     <PageHeading title={account.accountName} description={`抖音 · ${accountTypeLabels[account.accountType]} · ${store.city || '城市未填写'}`}>
-      <Button variant="outline" nativeButton={false} render={<Link href="/accounts" />}>品牌与账号</Button>{state.data.permissions.canWrite && <EditorDialog kind="account" initial={account} hierarchy={hierarchy.data} onSaved={() => { setNotice('账号已保存'); state.reload(); hierarchy.reload(); }} />}
+      <Button variant="outline" nativeButton={false} render={<Link href="/accounts" />}>品牌与账号</Button>
+      <Button nativeButton={false} render={<Link href={`/clients/${client.id}`} />}>{state.data.permissions.canWrite ? '前往客户资料修改' : '查看客户资料'}</Button>
     </PageHeading>
-    {notice && <output className="block rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</output>}
-    <Tabs defaultValue="profile" className="gap-5">
-      <TabsList variant="line"><TabsTrigger value="profile">账号档案</TabsTrigger><TabsTrigger value="memory">Memory</TabsTrigger></TabsList>
-      <TabsContent value="profile" className="space-y-6">
+    <div className="space-y-6">
         <section className="surface-card space-y-5">
           <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-slate-500"><Link href={'/clients/' + client.id} className="text-cyan-800 hover:underline">{client.clientName}</Link> / {brand.brandName} / {store.storeName}</p><BusinessBadge value={account.status} demo={account.isDemo} /></div>
           <div className="grid gap-5 sm:grid-cols-[1fr_auto]"><div><h2 className="text-sm text-slate-500">品牌定位</h2><p className="mt-2 text-xl font-semibold">{brand.brandPositioning || '未填写定位'}</p></div><div><p className="text-sm text-slate-500">粉丝数</p><p className="mt-1 text-3xl font-semibold">{account.followers === null ? '未录入' : account.followers.toLocaleString()}</p></div></div>
@@ -36,8 +27,6 @@ export function AccountDetailPage({ id }: { id: string }) {
           { title: '禁用风格', values: account.forbiddenStyleJson },
         ].map(item => <article className="surface-card" key={item.title}><h2 className="mb-4 font-semibold">{item.title}</h2><Tags values={item.values} /></article>)}</section>
         <section className="surface-card"><h2 className="text-lg font-semibold">内容统计</h2><p className="mt-2 text-sm text-slate-500">从当前组织的 SQLite 内容库实时统计，不包含其他账号数据。</p><div className="mt-5 grid grid-cols-2 gap-4"><div className="rounded-xl bg-slate-50 p-4"><p className="text-sm text-slate-500">内容总量</p><p className="mt-2 text-2xl">{contentStats.total}</p></div><div className="rounded-xl bg-slate-50 p-4"><p className="text-sm text-slate-500">已发布</p><p className="mt-2 text-2xl">{contentStats.published}</p></div></div></section>
-      </TabsContent>
-      <TabsContent value="memory"><MemoryPanel accountId={account.id} compact /></TabsContent>
-    </Tabs>
+    </div>
   </div>;
 }

@@ -18,7 +18,7 @@ describe('SQLite migration', () => {
     expect(sqlite.prepare("select count(*) as value from sqlite_schema where type = 'table' and name = 'skills'").get()).toEqual({ value: 1 });
   });
 
-  it('creates every phase-sixteen table with organization scope', () => {
+  it('creates every application table with organization scope', () => {
     sqlite = new Database(':memory:');
     sqlite.pragma('foreign_keys = ON');
     const migrations = readdirSync(resolve('drizzle'))
@@ -35,7 +35,7 @@ describe('SQLite migration', () => {
       'eval_cases', 'eval_experiments', 'history_retrieval_items', 'history_retrievals', 'improvement_proposals', 'memories',
       'model_price_configs', 'monthly_plans', 'organization_ai_quotas', 'organizations', 'performance_import_batches',
       'performance_snapshots', 'planner_candidates', 'planner_sessions', 'publishes', 'rating_versions', 'ratings', 'run_steps', 'runs', 'script_versions',
-      'shoot_contents', 'shoots', 'skill_versions', 'skills', 'stores', 'strategy_reviews', 'users',
+      'shoot_contents', 'shoots', 'skill_versions', 'skills', 'stores', 'strategy_reviews', 'user_permission_overrides', 'users',
     ]);
 
     for (const table of [
@@ -44,7 +44,7 @@ describe('SQLite migration', () => {
       'eval_cases', 'eval_experiments', 'history_retrieval_items', 'history_retrievals', 'improvement_proposals', 'memories',
       'monthly_plans', 'organization_ai_quotas', 'performance_import_batches', 'performance_snapshots', 'planner_candidates',
       'planner_sessions', 'publishes', 'rating_versions', 'ratings', 'run_steps', 'runs', 'script_versions', 'skill_versions', 'strategy_reviews',
-      'shoot_contents', 'shoots', 'skills', 'stores', 'users',
+      'shoot_contents', 'shoots', 'skills', 'stores', 'user_permission_overrides', 'users',
     ]) {
       const columns = sqlite.prepare(`pragma table_info(${table})`).all() as Array<{ name: string }>;
       expect(columns.some((column) => column.name === 'organization_id')).toBe(true);

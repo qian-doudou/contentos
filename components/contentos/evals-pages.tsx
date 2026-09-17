@@ -28,7 +28,7 @@ const issueLabels: Record<(typeof ratingIssueTags)[number], string> = {
   poor_strategy: '策略质量差', invalid_json: 'JSON 无效', context_missing: '上下文缺失', other: '其他',
 };
 const categoryLabels: Record<string, string> = {
-  ...issueLabels, low_rating: '低评分', memory_status_violation: '失效 Memory 被引用',
+  ...issueLabels, low_rating: '低评分', memory_status_violation: '失效后台资料被引用',
   high_duplicate_default: '高重复仍默认推荐', schema_repeated_failure: 'Schema 连续失败', manual_flag: '人工标记',
 };
 const severityLabels = { low: '低', medium: '中', high: '高', critical: '严重' } as const;
@@ -84,7 +84,7 @@ function MetricsPanel({ data }: { data: ReturnType<typeof evalDashboardDataSchem
         <ScoreCard label="Duplicate Judge 准确率" value={percent(data.duplicateJudge.accuracy)} note={`${data.duplicateJudge.labeledCases} 个人工标注 Case · high 召回 ${percent(data.duplicateJudge.highRecall)}`} />
       </div>
       <div className="rounded-xl border bg-white p-4 text-sm text-slate-600">
-        Script 确定性违规：禁用信息 <b>{data.script.forbiddenInformationViolations}</b> · 失效 Memory <b>{data.script.supersededMemoryUses}</b> · 品牌事实错误 <b>{data.script.brandFactErrors}</b>
+        Script 确定性违规：禁用信息 <b>{data.script.forbiddenInformationViolations}</b> · 失效后台资料 <b>{data.script.supersededMemoryUses}</b> · 品牌事实错误 <b>{data.script.brandFactErrors}</b>
       </div>
     </section>
   );
@@ -254,7 +254,7 @@ function MetricComparison({ a, b }: { a: AggregateEvalMetrics; b: AggregateEvalM
   const rows = [
     ['样本数', a.sampleSize, b.sampleSize], ['Schema 通过率', percent(a.schemaPassRate), percent(b.schemaPassRate)],
     ['关键规则通过率', percent(a.keyRulePassRate), percent(b.keyRulePassRate)],
-    ['品牌事实错误', a.brandFactErrors, b.brandFactErrors], ['失效 Memory 使用', a.supersededMemoryUses, b.supersededMemoryUses],
+    ['品牌事实错误', a.brandFactErrors, b.brandFactErrors], ['失效后台资料使用', a.supersededMemoryUses, b.supersededMemoryUses],
     ['高重复违规', a.highDuplicateDefaultViolations, b.highDuplicateDefaultViolations],
     ['平均耗时', `${Math.round(a.averageDurationMs)} ms`, `${Math.round(b.averageDurationMs)} ms`],
     ['平均成本', formatCost(a.averageEstimatedCost), formatCost(b.averageEstimatedCost)],

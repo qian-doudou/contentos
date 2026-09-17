@@ -15,6 +15,8 @@ import {
 } from './constants';
 import {
   organizationStatuses,
+  permissionCodes,
+  permissionEffects,
   runStatuses,
   runStepStatuses,
   runTypes,
@@ -145,12 +147,40 @@ export const auditLogs = sqliteTable(
   (table) => [index('idx_audit_logs_organization_created_at').on(table.organizationId, table.createdAt)],
 );
 
+export const userPermissionOverrides = sqliteTable('user_permission_overrides', {
+  id: text('id').primaryKey(),
+  organizationId: text('organization_id').notNull(),
+  userId: text('user_id').notNull(),
+  permissionCode: text('permission_code', { enum: permissionCodes }).notNull(),
+  effect: text('effect', { enum: permissionEffects }).notNull(),
+  reason: text('reason').notNull(),
+  expiresAt: text('expires_at'),
+  grantedBy: text('granted_by').notNull(),
+  isDemo: integer('is_demo', { mode: 'boolean' }).notNull().default(false),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+}, (t) => [
+  uniqueIndex('uq_user_permission_overrides_org_id').on(t.organizationId, t.id),
+  uniqueIndex('uq_user_permission_overrides_user_permission').on(t.organizationId, t.userId, t.permissionCode),
+  index('idx_user_permission_overrides_org_user_expiry').on(t.organizationId, t.userId, t.expiresAt),
+  foreignKey({ columns: [t.organizationId, t.userId], foreignColumns: [users.organizationId, users.id] }),
+  foreignKey({ columns: [t.organizationId, t.grantedBy], foreignColumns: [users.organizationId, users.id] }),
+  check('user_permission_overrides_permission_valid', sql`${t.permissionCode} IN (
+    'master_data.write', 'team.read', 'team.manage', 'skills.read', 'skills.write',
+    'ai.test', 'ai.settings', 'runs.read', 'ops.read', 'eval.read', 'eval.rate',
+    'eval.manage', 'memory.read', 'memory.write', 'context.build', 'system.dangerous'
+  )`),
+  check('user_permission_overrides_effect_valid', sql`${t.effect} IN ('allow', 'deny')`),
+  check('user_permission_overrides_reason_valid', sql`length(trim(${t.reason})) > 0`),
+]);
+
 export type OrganizationRow = typeof organizations.$inferSelect;
 export type UserRow = typeof users.$inferSelect;
 export type AppSettingRow = typeof appSettings.$inferSelect;
 export type RunRow = typeof runs.$inferSelect;
 export type RunStepRow = typeof runSteps.$inferSelect;
 export type AuditLogRow = typeof auditLogs.$inferSelect;
+export type UserPermissionOverrideRow = typeof userPermissionOverrides.$inferSelect;
 
 const businessMetadata = () => ({
   id: text('id').primaryKey(),
@@ -371,6 +401,7 @@ export const contents = sqliteTable('contents', {
   currentEditVersionId: text('current_edit_version_id'),
   activeApprovedEditVersionId: text('active_approved_edit_version_id'),
   aiReviewStatus: text('ai_review_status'),
+  creativeBriefJson: text('creative_brief_json', { mode: 'json' }).$type<unknown>(),
   createdBy: text('created_by').notNull(),
   isDemo: integer('is_demo', { mode: 'boolean' }).notNull().default(false),
   createdAt: text('created_at').notNull(),
@@ -904,6 +935,7 @@ export const plannerCandidates = sqliteTable('planner_candidates', {
   hookIdea: text('hook_idea').notNull(),
   coreMessage: text('core_message').notNull(),
   recommendedReason: text('recommended_reason').notNull(),
+  creativeBriefJson: text('creative_brief_json', { mode: 'json' }).$type<unknown>(),
   duplicateLevel: text('duplicate_level', { enum: ['new', 'mild', 'remixable', 'high'] }).notNull(),
   similarContentsJson: text('similar_contents_json', { mode: 'json' }).$type<unknown[]>().notNull().default([]),
   duplicateReason: text('duplicate_reason').notNull(),

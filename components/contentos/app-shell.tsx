@@ -5,30 +5,39 @@ import { usePathname } from 'next/navigation';
 import { useState } from 'react';
 import {
   Activity, BarChart3, Building2, Camera, Clapperboard, Cpu, FileCheck2, Film,
-  Gauge, Menu, PanelTop, Settings, ShieldCheck, Sparkles, Users, FilePenLine,
+  Flame, Gauge, Menu, PanelTop, Settings, ShieldCheck, Sparkles, Users, FilePenLine,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { NativeSelect } from '@/components/ui/native-select';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
-import { devIdentityDataSchema, roleLabels } from '@/lib/auth/contracts';
+import { devIdentityDataSchema, roleLabels, type WorkspaceAccess } from '@/lib/auth/contracts';
 import { fetchData, useApiData } from '@/components/contentos/master-data/common';
 import { cn } from '@/lib/utils';
 
-const navigation = [
-  { href: '/', label: '工作台', icon: Gauge },
-  { href: '/scripts/new', label: 'AI 写脚本', icon: FilePenLine },
-  { href: '/clients', label: '客户', icon: Building2 },
-  { href: '/accounts', label: '品牌与账号', icon: PanelTop },
-  { href: '/contents', label: '内容运营', icon: Clapperboard },
-  { href: '/shoots', label: '拍摄管理', icon: Camera },
-  { href: '/edits', label: '剪辑审核', icon: Film },
-  { href: '/ai', label: 'AI 运营', icon: Sparkles },
-  { href: '/analytics/content', label: '运营数据', icon: BarChart3 },
-  { href: '/ops', label: '运营中心', icon: Activity },
-  { href: '/skills', label: 'AI Skill', icon: Cpu },
-  { href: '/evals', label: '评测中心', icon: FileCheck2 },
-  { href: '/team', label: '团队', icon: Users },
-  { href: '/settings', label: '系统设置', icon: Settings },
+const navigationGroups = [
+  { label: '我的工作', items: [
+    { href: '/', label: '工作台', icon: Gauge, access: null },
+    { href: '/shoots', label: '拍摄任务', icon: Camera, access: 'shoots' },
+    { href: '/edits', label: '剪辑任务', icon: Film, access: 'edits' },
+  ] },
+  { label: '内容业务', items: [
+    { href: '/clients', label: '客户', icon: Building2, access: 'masterData' },
+    { href: '/accounts', label: '品牌与账号', icon: PanelTop, access: 'masterData' },
+    { href: '/contents', label: '内容运营', icon: Clapperboard, access: 'contents' },
+    { href: '/analytics/content', label: '运营数据', icon: BarChart3, access: 'analytics' },
+  ] },
+  { label: 'AI 工具', items: [
+    { href: '/scripts/new', label: 'AI 写脚本', icon: FilePenLine, access: 'scripts' },
+    { href: '/ai/inspiration', label: '爆款灵感', icon: Flame, access: 'ai' },
+    { href: '/ai', label: 'AI 运营', icon: Sparkles, access: 'ai' },
+  ] },
+  { label: '管理与质量', items: [
+    { href: '/ops', label: '运营中心', icon: Activity, access: 'ops' },
+    { href: '/skills', label: 'AI Skill', icon: Cpu, access: 'skills' },
+    { href: '/evals', label: '评测中心', icon: FileCheck2, access: 'evals' },
+    { href: '/team', label: '团队与权限', icon: Users, access: 'team' },
+    { href: '/settings', label: '系统设置', icon: Settings, access: 'settings' },
+  ] },
 ] as const;
 
 function ProductMark() {
@@ -40,23 +49,35 @@ function ProductMark() {
   );
 }
 
-function Navigation({ onNavigate }: { onNavigate?: () => void }) {
+function Navigation({ access, onNavigate }: { access?: WorkspaceAccess; onNavigate?: () => void }) {
   const pathname = usePathname();
   return (
-    <nav className="space-y-1" aria-label="主导航">
-      {navigation.map(({ href, label, icon: Icon }) => {
-        const active = href === '/' ? pathname === '/' : pathname.startsWith(href);
-        return (
-          <Link
-            aria-current={active ? 'page' : undefined}
-            className={cn('nav-item', active && 'bg-[#eeece9] text-[#37352f]')}
-            href={href}
-            key={href}
-            onClick={onNavigate}
-          >
-            <Icon className={cn('size-4 text-[#9b9a97]', active && 'text-[#37352f]')} /><span>{label}</span>
-          </Link>
-        );
+    <nav className="space-y-5" aria-label="主导航">
+      {navigationGroups.map(group => {
+        const items = group.items.filter(item => item.access === null || access?.[item.access]);
+        if (!items.length) return null;
+        return <section key={group.label} aria-label={group.label}>
+          <p className="mb-1.5 px-2 text-[11px] font-medium uppercase tracking-[0.08em] text-[#b4b4b0]">{group.label}</p>
+          <div className="space-y-1">{items.map(({ href, label, icon: Icon }) => {
+            const matchesPath = (candidate: string) => candidate === '/'
+              ? pathname === '/'
+              : pathname === candidate || pathname.startsWith(`${candidate}/`);
+            const hasMoreSpecificMatch = navigationGroups.some(candidateGroup => candidateGroup.items.some(candidate =>
+              candidate.href !== href && candidate.href.startsWith(`${href}/`) && matchesPath(candidate.href)));
+            const active = matchesPath(href) && !hasMoreSpecificMatch;
+            return (
+              <Link
+                aria-current={active ? 'page' : undefined}
+                className={cn('nav-item', active && 'bg-[#eeece9] text-[#37352f]')}
+                href={href}
+                key={href}
+                onClick={onNavigate}
+              >
+                <Icon className={cn('size-4 text-[#9b9a97]', active && 'text-[#37352f]')} /><span>{label}</span>
+              </Link>
+            );
+          })}</div>
+        </section>;
       })}
     </nav>
   );
@@ -82,10 +103,10 @@ function AuthenticatedAppShell({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen bg-white text-[#37352f]">
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-[#e9e9e7] bg-[#fbfbfa] px-3 py-4 text-[#787774] lg:flex">
         <div className="px-2 pb-6"><ProductMark /></div>
-        <Navigation />
+        <Navigation access={identity.data?.workspaceAccess} />
         <div className="mt-auto rounded-md border border-[#e9e9e7] bg-white p-3">
           <div className="flex items-center gap-2 text-sm font-medium text-[#37352f]"><ShieldCheck className="size-4 text-[#0f7b6c]" />本地演示模式</div>
-          <p className="mt-1.5 text-xs leading-5 text-[#9b9a97]">不接入真实企业数据与外部平台</p>
+          <p className="mt-1.5 text-xs leading-5 text-[#9b9a97]">演示数据与生产数据隔离；外部平台仅使用公开接口</p>
         </div>
       </aside>
 
@@ -97,7 +118,7 @@ function AuthenticatedAppShell({ children }: { children: React.ReactNode }) {
                 <SheetTrigger render={<Button variant="outline" size="icon" aria-label="打开导航" />}><Menu /></SheetTrigger>
                 <SheetContent side="left" className="w-[280px] border-[#e9e9e7] bg-[#fbfbfa] p-4 text-[#787774]">
                   <SheetHeader className="px-2"><SheetTitle className="sr-only">ContentOS 导航</SheetTitle><ProductMark /></SheetHeader>
-                  <Navigation onNavigate={() => setMobileOpen(false)} />
+                  <Navigation access={identity.data?.workspaceAccess} onNavigate={() => setMobileOpen(false)} />
                 </SheetContent>
               </Sheet>
               <div><p className="font-semibold tracking-[-0.02em]">ContentOS</p><p className="text-xs text-[#9b9a97]">内容运营工作区</p></div>

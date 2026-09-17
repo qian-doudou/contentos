@@ -11,8 +11,8 @@ import { NativeSelect } from '@/components/ui/native-select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { contentGoals, contentPriorities, contentStatuses, contentTypes } from '@/db/constants';
 import {
-  contentDetailSchema, contentGoalLabels, contentListSchema, contentStatusLabels, contentTypeLabels, hookTypeLabels,
-  priorityLabels,
+  contentBoardSchema, contentDetailSchema, contentGoalLabels, contentListSchema, contentStatusLabels, contentTypeLabels,
+  hookTypeLabels, priorityLabels,
 } from '@/lib/content/contracts';
 import { EmptyData, ErrorData, LoadingData, Tags, useApiData } from '@/components/contentos/master-data/common';
 import { ContentHeading, ContentNav, formatLocalDate, periodLabel } from './common';
@@ -22,6 +22,7 @@ import { WorkflowBoard, WorkflowStatusBadge } from './workflow-board';
 import { ScriptApprovalPanel } from '@/components/contentos/script/script-approval-panel';
 import { EditReviewPanel } from '@/components/contentos/edit/edit-pages';
 import { ContentPerformancePanel } from '@/components/contentos/performance/performance-pages';
+import { approvalStatuses, scriptDraftStatuses } from '@/lib/content/workflow';
 
 const priorityTone: Record<string, string> = {
   low: 'bg-slate-100 text-slate-600', normal: 'bg-cyan-50 text-cyan-700', high: 'bg-amber-50 text-amber-700', urgent: 'bg-rose-50 text-rose-700',
@@ -32,14 +33,25 @@ export function ContentListPage() {
   const router = useRouter();
   const query = params.toString();
   const state = useApiData('/api/contents?' + query, contentListSchema);
+  const boardParams = new URLSearchParams(query);
+  boardParams.delete('page');
+  boardParams.delete('pageSize');
+  const boardQuery = boardParams.toString();
+  const boardState = useApiData('/api/contents/board?' + boardQuery, contentBoardSchema);
   const data = state.data;
   const [view, setView] = useState<'kanban' | 'table'>('kanban');
+  const groupedStatuses = params.get('statuses');
+  const quickFilterLabel = groupedStatuses === scriptDraftStatuses.join(',') ? '待写脚本'
+    : groupedStatuses === approvalStatuses.join(',') ? '待审核'
+      : params.get('deadlineState') === 'dueSoon' ? '即将延期' : null;
   function filter(event: React.SyntheticEvent<HTMLFormElement, SubmitEvent>) {
     event.preventDefault();
     const next = new URLSearchParams();
     new FormData(event.currentTarget).forEach((value, key) => {
       if (typeof value === 'string' && value.trim()) next.set(key, value.trim());
     });
+    if (!next.has('status') && groupedStatuses) next.set('statuses', groupedStatuses);
+    if (params.get('deadlineState')) next.set('deadlineState', params.get('deadlineState')!);
     next.set('page', '1');
     router.push('/contents?' + next.toString());
   }
@@ -66,15 +78,15 @@ export function ContentListPage() {
         <input type="hidden" name="pageSize" value={params.get('pageSize') || '12'} /><Button type="submit">查询</Button><Button variant="ghost" type="button" onClick={() => router.push('/contents')}>清空</Button>
       </form>
       <section className="surface-card !p-0">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b p-5"><div className="flex items-center gap-3"><h2 className="font-semibold">内容工作台</h2><Badge variant="outline">共 {data.total} 条</Badge></div><div className="flex gap-2"><Button size="sm" variant={view === 'kanban' ? 'default' : 'outline'} onClick={() => setView('kanban')}><LayoutDashboard />看板</Button><Button size="sm" variant={view === 'table' ? 'default' : 'outline'} onClick={() => setView('table')}><List />表格</Button></div></div>
-        {data.items.length && view === 'kanban' ? <div className="p-4"><WorkflowBoard key={data.items.map(item => `${item.id}:${item.updatedAt}`).join('|')} data={data} onChanged={state.reload} /></div> : data.items.length ? <Table><TableHeader><TableRow><TableHead>内容</TableHead><TableHead>账号 / 月度</TableHead><TableHead>类型 / 目标</TableHead><TableHead>运营</TableHead><TableHead>发布 / 截止</TableHead><TableHead>优先级</TableHead><TableHead>状态</TableHead></TableRow></TableHeader><TableBody>{data.items.map(item => <TableRow key={item.id}>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b p-5"><div className="flex flex-wrap items-center gap-3"><h2 className="font-semibold">内容工作台</h2><Badge variant="outline">共 {view === 'kanban' ? (boardState.data?.total ?? data.total) : data.total} 条</Badge>{quickFilterLabel && <Badge className="bg-cyan-50 text-cyan-700" variant="secondary">工作台筛选：{quickFilterLabel}</Badge>}</div><div className="flex gap-2"><Button size="sm" variant={view === 'kanban' ? 'default' : 'outline'} onClick={() => setView('kanban')}><LayoutDashboard />看板</Button><Button size="sm" variant={view === 'table' ? 'default' : 'outline'} onClick={() => setView('table')}><List />表格</Button></div></div>
+        {view === 'kanban' ? boardState.loading ? <div className="p-4"><LoadingData /></div> : boardState.error ? <div className="p-4"><ErrorData error={boardState.error} retry={boardState.reload} /></div> : boardState.data && (boardState.data.total ? <div className="p-4"><WorkflowBoard key={`${boardQuery}:${boardState.data.columns.map(column => `${column.id}:${column.total}:${column.items.map(item => `${item.id}:${item.updatedAt}`).join(',')}`).join('|')}`} data={boardState.data} query={boardQuery} onChanged={() => { boardState.reload(); state.reload(); }} /></div> : <EmptyData title="没有匹配的内容" description="调整筛选条件，或创建第一条结构化内容策划。" />) : data.items.length ? <Table><TableHeader><TableRow><TableHead>内容</TableHead><TableHead>账号 / 月度</TableHead><TableHead>类型 / 目标</TableHead><TableHead>运营</TableHead><TableHead>发布 / 截止</TableHead><TableHead>优先级</TableHead><TableHead>状态</TableHead></TableRow></TableHeader><TableBody>{data.items.map(item => <TableRow key={item.id}>
           <TableCell className="max-w-80"><Link className="font-medium text-cyan-800 hover:underline" href={'/contents/' + item.id}>{item.title}</Link><p className="mt-1 line-clamp-1 text-xs text-slate-500">{item.topic || '选题未填写'}</p></TableCell>
           <TableCell><p>{item.accountName}</p><p className="mt-1 text-xs text-slate-500">{item.planYear && item.planMonth ? periodLabel(item.planYear, item.planMonth) : '未归入月度计划'}</p></TableCell>
           <TableCell><Badge variant="secondary">{contentTypeLabels[item.contentType]}</Badge><span className="ml-2 text-sm text-slate-500">{contentGoalLabels[item.contentGoal]}</span></TableCell>
           <TableCell>{item.operatorName}</TableCell><TableCell className="text-xs"><p>{formatLocalDate(item.plannedPublishDate)}</p><p className="mt-1 text-slate-400">{formatLocalDate(item.deadline)}</p></TableCell>
           <TableCell><Badge variant="secondary" className={priorityTone[item.priority]}>{priorityLabels[item.priority]}</Badge></TableCell><TableCell><div className="flex flex-wrap gap-2"><WorkflowStatusBadge status={item.status} />{item.overdue ? <Badge variant="destructive">已逾期</Badge> : item.dueSoon ? <Badge className="bg-amber-50 text-amber-700">临近截止</Badge> : null}{item.isDemo && <Badge variant="outline">演示</Badge>}</div></TableCell>
         </TableRow>)}</TableBody></Table> : <EmptyData title="没有匹配的内容" description="调整筛选条件，或创建第一条结构化内容策划。" />}
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t p-4"><span className="text-sm text-slate-500">第 {data.page} 页</span><div className="flex gap-2"><Button variant="outline" disabled={data.page <= 1} onClick={() => page(data.page - 1)}>上一页</Button><Button variant="outline" disabled={data.page * data.pageSize >= data.total} onClick={() => page(data.page + 1)}>下一页</Button></div></div>
+        {view === 'table' && <div className="flex flex-wrap items-center justify-between gap-3 border-t p-4"><span className="text-sm text-slate-500">第 {data.page} 页</span><div className="flex gap-2"><Button variant="outline" disabled={data.page <= 1} onClick={() => page(data.page - 1)}>上一页</Button><Button variant="outline" disabled={data.page * data.pageSize >= data.total} onClick={() => page(data.page + 1)}>下一页</Button></div></div>}
       </section>
     </>}
   </div>;

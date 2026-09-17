@@ -24,11 +24,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
 import { EmptyData, ErrorData, fetchData, LoadingData, RequestError, Tags, useApiData } from '@/components/contentos/master-data/common';
+import { ConfirmationDialog } from '@/components/contentos/confirmation-dialog';
 import { shootDetailSchema, shootItemStatusLabels, shootListSchema, shootStatusLabels } from '@/lib/shoots/contracts';
 
 type ShootListData = z.infer<typeof shootListSchema>;
 type ShootDetailData = z.infer<typeof shootDetailSchema>;
 type ShootItem = ShootDetailData['items'][number];
+type ShootItemAction = 'shot' | 'missing_shots' | 'rescheduled' | 'cancelled' | 'remove';
 
 const shootTone: Record<string, string> = {
   planned: 'bg-cyan-50 text-cyan-700', in_progress: 'bg-blue-50 text-blue-700', completed: 'bg-emerald-50 text-emerald-700',
@@ -189,7 +191,7 @@ function ShootChecklistItem({ item, data, pending, fields, setFields, act }: {
   pending: boolean;
   fields: { missingShots: string; note: string; newShootId: string };
   setFields: (value: { missingShots: string; note: string; newShootId: string }) => void;
-  act: (action: 'shot' | 'missing_shots' | 'rescheduled' | 'cancelled' | 'remove') => void;
+  act: (action: ShootItemAction) => void;
 }) {
   const actionable = ['planned', 'missing_shots'].includes(item.shootItemStatus);
   return <article className="rounded-xl border bg-white p-4 sm:p-5">
@@ -209,6 +211,7 @@ export function ShootDetailPage({ id }: { id: string }) {
   const [pending, setPending] = useState('');
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
+  const [confirmation, setConfirmation] = useState<{ item: ShootItem; action: 'shot' | 'cancelled' | 'remove' } | null>(null);
   const [itemFields, setItemFields] = useState<Record<string, { missingShots: string; note: string; newShootId: string }>>({});
   const defaults = useMemo(() => Object.fromEntries((state.data?.items || []).map((item) => [item.id, {
     missingShots: item.missingShots, note: item.note, newShootId: '',
@@ -227,7 +230,7 @@ export function ShootDetailPage({ id }: { id: string }) {
     } catch (cause) { setError(cause instanceof Error ? cause.message : '加入失败'); }
     finally { setPending(''); }
   }
-  async function act(item: ShootItem, action: 'shot' | 'missing_shots' | 'rescheduled' | 'cancelled' | 'remove') {
+  async function act(item: ShootItem, action: ShootItemAction) {
     const fields = itemFields[item.id] || defaults[item.id] || { missingShots: '', note: '', newShootId: '' };
     setPending(item.id); setError(''); setNotice('');
     try {
@@ -240,6 +243,31 @@ export function ShootDetailPage({ id }: { id: string }) {
       setError(cause instanceof RequestError ? `${cause.message}${cause.requestId ? `（${cause.requestId}）` : ''}` : cause instanceof Error ? cause.message : '更新失败');
     } finally { setPending(''); }
   }
+  const confirmationCopy = confirmation ? {
+    shot: {
+      title: `确认将“${confirmation.item.title}”标记为已拍？`,
+      description: '确认后 Checklist 项会进入已拍终态，内容从 WAITING_SHOOT 推进到 SHOT，并进入后续剪辑流程。',
+      confirmLabel: '确认标记已拍',
+      destructive: false,
+    },
+    cancelled: {
+      title: `确认取消“${confirmation.item.title}”？`,
+      description: '确认后该项会记为已取消，内容从 WAITING_SHOOT 退回 APPROVED；需要重新排期才能继续。',
+      confirmLabel: '确认取消此项',
+      destructive: true,
+    },
+    remove: {
+      title: `确认从当前排期移除“${confirmation.item.title}”？`,
+      description: '确认后该项会保留为已取消历史，内容从 WAITING_SHOOT 退回 APPROVED；不能在本页直接撤销。',
+      confirmLabel: '确认移出排期',
+      destructive: true,
+    },
+  }[confirmation.action] : null;
+  async function confirmShootAction() {
+    if (!confirmation) return;
+    await act(confirmation.item, confirmation.action);
+    setConfirmation(null);
+  }
   return <div className="space-y-6">
     <ShootHeading title={`${data.shoot.clientName} · ${data.shoot.shootDate}`} description={`${data.shoot.storeName} / ${data.shoot.startTime}–${data.shoot.endTime}`}>
       <Button variant="outline" nativeButton={false} render={<Link href="/shoots" />}><ChevronLeft />拍摄列表</Button>
@@ -248,7 +276,8 @@ export function ShootDetailPage({ id }: { id: string }) {
     {(notice || error) && <output className={`block rounded-xl p-3 text-sm ${error ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-800'}`}>{error || notice}</output>}
     <section className="surface-card"><div className="flex flex-wrap items-start justify-between gap-4"><div><div className="flex flex-wrap items-center gap-2"><ShootStatusBadge value={data.shoot.status} />{data.shoot.isDemo && <Badge variant="outline">演示</Badge>}</div><div className="mt-5 grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-4"><p className="flex items-center gap-2"><Clock3 className="size-4 text-slate-400" />{data.shoot.shootDate} {data.shoot.startTime}–{data.shoot.endTime}</p><p className="flex items-center gap-2"><MapPin className="size-4 text-slate-400" />{data.shoot.location || '未填地点'}</p><p className="flex items-center gap-2"><UsersRound className="size-4 text-slate-400" />运营：{data.shoot.operatorName}</p><p className="flex items-center gap-2"><Camera className="size-4 text-slate-400" />摄影：{data.shoot.photographerName}</p></div>{data.shoot.notes && <p className="mt-4 text-sm leading-6 text-slate-600">{data.shoot.notes}</p>}</div><div className="min-w-48"><Progress value={progress}><ProgressLabel>Checklist</ProgressLabel><ProgressValue>{() => `${data.shoot.shotCount}/${data.shoot.itemCount}`}</ProgressValue></Progress></div></div></section>
     {data.permissions.canSchedule && <section className="surface-card"><div className="flex flex-wrap items-end gap-3"><label className="min-w-64 flex-1 space-y-1.5 text-sm" htmlFor="shoot-add-content">加入已批准内容<NativeSelect id="shoot-add-content" value={contentId} onChange={(event) => setContentId(event.target.value)}><option value="">选择 APPROVED 内容</option>{data.eligibleContents.map((content) => <option key={content.id} value={content.id}>{content.pendingReschedule ? '[待重新排期] ' : ''}{content.title}</option>)}</NativeSelect></label><Button disabled={!contentId || pending === 'add'} onClick={() => void addContent()}><Plus />加入 Checklist</Button></div>{!data.eligibleContents.length && <p className="mt-3 text-sm text-slate-500">当前门店没有可排期的 APPROVED 内容。内容必须具有活动已批准脚本。</p>}</section>}
-    <section><div className="mb-3 flex items-center justify-between"><h2 className="text-lg font-semibold">拍摄内容 Checklist</h2><Badge variant="outline">{data.items.length} 条</Badge></div>{data.items.length ? <div className="space-y-4">{data.items.map((item) => <ShootChecklistItem key={item.id} item={item} data={data} pending={pending === item.id} fields={itemFields[item.id] || defaults[item.id] || { missingShots: '', note: '', newShootId: '' }} setFields={(value) => setItemFields((current) => ({ ...current, [item.id]: value }))} act={(action) => void act(item, action)} />)}</div> : <div className="surface-card"><EmptyData title="Checklist 为空" description="加入具有活动已批准脚本的 APPROVED 内容后，可在此执行拍摄。" /></div>}</section>
+    <section><div className="mb-3 flex items-center justify-between"><h2 className="text-lg font-semibold">拍摄内容 Checklist</h2><Badge variant="outline">{data.items.length} 条</Badge></div>{data.items.length ? <div className="space-y-4">{data.items.map((item) => <ShootChecklistItem key={item.id} item={item} data={data} pending={pending === item.id} fields={itemFields[item.id] || defaults[item.id] || { missingShots: '', note: '', newShootId: '' }} setFields={(value) => setItemFields((current) => ({ ...current, [item.id]: value }))} act={(action) => { if (action === 'shot' || action === 'cancelled' || action === 'remove') setConfirmation({ item, action }); else void act(item, action); }} />)}</div> : <div className="surface-card"><EmptyData title="Checklist 为空" description="加入具有活动已批准脚本的 APPROVED 内容后，可在此执行拍摄。" /></div>}</section>
     {data.items.some((item) => item.shootItemStatus === 'missing_shots') && <section className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><div className="flex items-center gap-2 font-semibold"><AlertTriangle className="size-4" />存在缺失镜头</div><p className="mt-2">内容保留 WAITING_SHOOT，可在补拍后勾选已拍，或改期到新拍摄。</p></section>}
+    {confirmationCopy && <ConfirmationDialog open={Boolean(confirmation)} onOpenChange={(open) => { if (!open && !pending) setConfirmation(null); }} title={confirmationCopy.title} description={confirmationCopy.description} confirmLabel={confirmationCopy.confirmLabel} destructive={confirmationCopy.destructive} pending={Boolean(pending)} onConfirm={() => void confirmShootAction()} />}
   </div>;
 }
