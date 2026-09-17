@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 
 type NativeSelectProps = Omit<React.ComponentProps<'select'>, 'size'> & {
   size?: 'sm' | 'default';
+  triggerClassName?: string;
 };
 
 type SelectOption = {
@@ -68,6 +69,7 @@ function NativeSelect({
   onChange,
   required,
   size = 'default',
+  triggerClassName,
   value,
 }: NativeSelectProps) {
   const options = React.useMemo(() => collectOptions(children), [children]);
@@ -110,11 +112,14 @@ function NativeSelect({
           aria-describedby={ariaDescribedBy}
           aria-invalid={ariaInvalid}
           aria-label={ariaLabel}
-          className="border-input text-foreground data-[placeholder]:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 flex h-full w-full min-w-0 items-center justify-between gap-2 rounded-lg border bg-transparent py-1 pr-2.5 pl-2.5 text-left text-sm transition-colors outline-none focus-visible:ring-3 aria-invalid:ring-3 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 data-[size=sm]:rounded-[min(var(--radius-md),10px)] data-[size=sm]:py-0.5"
+          className={cn(
+            'border-input text-foreground data-[placeholder]:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 flex h-full w-full min-w-0 items-center justify-between gap-2 rounded-lg border bg-transparent py-1 pr-2.5 pl-2.5 text-left text-sm transition-colors outline-none focus-visible:ring-3 aria-invalid:ring-3 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 data-[size=sm]:rounded-[min(var(--radius-md),10px)] data-[size=sm]:py-0.5',
+            triggerClassName,
+          )}
           data-size={size}
           id={id}
         >
-          <Select.Value />
+          <Select.Value className="min-w-0 flex-1 truncate whitespace-nowrap" />
           <Select.Icon className="shrink-0 text-[#787774]">
             <ChevronDownIcon aria-hidden="true" className="size-4" />
           </Select.Icon>

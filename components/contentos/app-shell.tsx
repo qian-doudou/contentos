@@ -110,7 +110,14 @@ function AuthenticatedAppShell({ children }: { children: React.ReactNode }) {
             <div className="flex items-center gap-3">
               {identity.loading ? <span className="text-xs text-[#9b9a97]">身份加载中…</span> : identity.error ? <Button variant="outline" size="sm" onClick={identity.reload}>身份加载失败</Button> : identity.data && (
                 identity.data.switchingEnabled
-                  ? <NativeSelect aria-label="开发用户切换器" className="w-40" value={identity.data.currentUser.id} disabled={switching} onChange={event => void switchIdentity(event.target.value)}>
+                  ? <NativeSelect
+                    aria-label="开发用户切换器"
+                    className="h-9 w-48"
+                    triggerClassName="border-0 bg-transparent px-2 shadow-none hover:bg-[#f7f7f5] focus-visible:border-transparent focus-visible:ring-0"
+                    value={identity.data.currentUser.id}
+                    disabled={switching}
+                    onChange={event => void switchIdentity(event.target.value)}
+                  >
                     {identity.data.users.map(user => <option key={user.id} value={user.id}>{user.name} · {roleLabels[user.role]}</option>)}
                   </NativeSelect>
                   : <span className="text-sm font-medium">{identity.data.currentUser.name}</span>
