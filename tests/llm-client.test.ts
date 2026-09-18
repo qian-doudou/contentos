@@ -193,14 +193,14 @@ describe('OpenAI-compatible LLM client', () => {
     expect(request).toHaveBeenCalledOnce();
   });
 
-  it('classifies timeouts and malformed provider responses after at most one retry', async () => {
+  it('does not retry an overall generation timeout, but retries a malformed provider response once', async () => {
     const timeout = vi.fn<typeof fetch>().mockRejectedValue(new DOMException('Aborted', 'AbortError'));
     const timedClient = new OpenAICompatibleClient(getLlmConfig({ LLM_API_KEY: 'test-key' }), { fetch: timeout });
-    await expect(timedClient.complete({ messages: [] })).rejects.toMatchObject({ code: 'LLM_TIMEOUT', httpStatus: 504, attempts: 2 });
+    await expect(timedClient.complete({ messages: [] })).rejects.toMatchObject({ code: 'LLM_TIMEOUT', httpStatus: 504, attempts: 1 });
     const malformed = vi.fn<typeof fetch>().mockImplementation(async () => Response.json({ choices: [] }));
     const invalidClient = new OpenAICompatibleClient(getLlmConfig({ LLM_API_KEY: 'test-key' }), { fetch: malformed });
     await expect(invalidClient.complete({ messages: [] })).rejects.toMatchObject({ code: 'LLM_RESPONSE_INVALID', httpStatus: 502, attempts: 2 });
-    expect(timeout).toHaveBeenCalledTimes(2);
+    expect(timeout).toHaveBeenCalledOnce();
     expect(malformed).toHaveBeenCalledTimes(2);
   });
 

@@ -20,7 +20,7 @@
 
 ## 网络与代理
 
-部分电脑的浏览器和 curl 能访问百炼，但 Node 原生 fetch 不自动使用 HTTP 代理，导致之前生成时反复连接超时。统一 Provider Transport 使用 Undici `EnvHttpProxyAgent`，只对服务端 AI/Embedding 请求启用，读取 `https_proxy` / `HTTPS_PROXY`、`http_proxy` / `HTTP_PROXY` 和 `no_proxy` / `NO_PROXY`。没有代理配置时仍走直连。
+部分电脑的浏览器和 curl 能访问百炼，但 Node 原生 fetch 不自动使用 HTTP 代理，导致之前生成时反复连接超时。统一 Provider Transport 使用 Undici Agent，只对服务端 AI/Embedding 请求启用：无代理时直连，配置代理时读取 `https_proxy` / `HTTPS_PROXY`、`http_proxy` / `HTTP_PROXY` 和 `no_proxy` / `NO_PROXY`。`LLM_CONNECT_TIMEOUT_MS` 单独限制建立连接的等待，不会截断已经开始返回的模型生成。
 
 代理必须是自己正在使用且可信的代理。不要盲目复制他人的代理地址；Key 不能放在前端或 URL 中。修改环境变量后重启 `npm run dev`，不要关闭现有服务之外的进程。代理凭据、Key 和完整环境变量不会写入前端或 Run Trace。
 
@@ -33,7 +33,7 @@
 ## 可恢复错误与扣点
 
 - `LLM_CONNECTION_FAILED`：检查启动服务的网络与代理；最多重试一次。
-- `LLM_TIMEOUT`：请求超时；检查网络或调整 `LLM_TIMEOUT_MS` 后重试。
+- `LLM_TIMEOUT`：模型整体生成超时；不会自动重复发起同一任务，检查网络或调整 `LLM_TIMEOUT_MS` 后手动重试。
 - `LLM_AUTH_FAILED`：检查 Key、服务地域和模型权限；不无意义重试。
 - `LLM_RATE_LIMITED`：检查百炼余额或限流，稍后重试。
 - `LLM_MODEL_NOT_FOUND`：核对模型名称与 API 地址。

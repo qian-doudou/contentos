@@ -63,7 +63,9 @@ export function ScriptWriterPage() {
   const [selected, setSelected] = useState('');
   const [contentId, setContentId] = useState(params.get('contentId') || '');
   const [pending, setPending] = useState('');
+  const [pendingElapsed, setPendingElapsed] = useState(0);
   const [error, setError] = useState<Error | null>(null);
+  const [retryAction, setRetryAction] = useState<'topics' | 'script' | null>(null);
   const [notice, setNotice] = useState('');
   const [revision, setRevision] = useState(0);
   const [restoredSessionId, setRestoredSessionId] = useState('');
@@ -84,6 +86,21 @@ export function ScriptWriterPage() {
     ? page.data.plannerPointCost + page.data.scriptPointCost : null;
   const selectedCandidate = session?.candidates.find(candidate => candidate.id === selected) ?? null;
   const selectedBrief = selectedCandidate ? creativeEdits[selectedCandidate.id] ?? selectedCandidate.creativeBrief : null;
+
+  function beginPending(value: string) {
+    setPending(value);
+    setPendingElapsed(0);
+    setRetryAction(null);
+  }
+
+  useEffect(() => {
+    if (!pending) return;
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => {
+      setPendingElapsed(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1_000);
+    return () => window.clearInterval(timer);
+  }, [pending]);
 
   function updateCreative(candidateId: string, changes: Partial<CreativeBrief>) {
     const candidate = session?.candidates.find(item => item.id === candidateId);
@@ -157,7 +174,7 @@ export function ScriptWriterPage() {
 
   async function generateTopics() {
     if (!activeAccount || locked.current) return;
-    locked.current = true; setPending('topics'); setError(null); setNotice('');
+    locked.current = true; beginPending('topics'); setError(null); setNotice('');
     try {
       const inspirationBrief = inspirations.length ? [
         '以下为用户选择的公开爆款参考。只借鉴选题角度、开场结构和节奏，不复制标题或原文，不沿用其中未经品牌资料验证的事实：',
@@ -181,13 +198,16 @@ export function ScriptWriterPage() {
           specialRequirements }),
       });
       setSelected(''); setContentId(''); setCreativeEdits({}); setDirectionBatch(nextBatch); rememberSession(value);
-    } catch (reason) { setError(reason instanceof Error ? reason : new Error('选题生成失败，请重试')); }
+    } catch (reason) {
+      setError(reason instanceof Error ? reason : new Error('选题生成失败，请重试'));
+      setRetryAction('topics');
+    }
     finally { locked.current = false; setPending(''); }
   }
 
   async function reangle(candidateId: string, angle?: string) {
     if (!session || locked.current) return;
-    locked.current = true; setPending(candidateId); setError(null);
+    locked.current = true; beginPending(candidateId); setError(null);
     try {
       const value = await fetchData(`/api/ai/planner/${session.id}/candidates/${candidateId}/reangle`, plannerSessionViewSchema, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ alternativeAngle: angle || null }),
@@ -200,23 +220,26 @@ export function ScriptWriterPage() {
 
   async function writeScript() {
     if (!session || !selected || locked.current) return;
-    locked.current = true; setPending('saving'); setError(null); setNotice('');
+    locked.current = true; beginPending('saving'); setError(null); setNotice('');
     try {
       const result = await writeSelectedScript(fetchData, session.id, selected, (saved, id) => {
-        setContentId(id); setSession(saved); setPending('script');
+        setContentId(id); setSession(saved); beginPending('script');
       }, selectedBrief ?? undefined);
       setNotice(result.fallbackUsed
         ? '当前未配置 API Key，本次为演示脚本，不是千问生成。请配置 Key 后生成正式脚本。'
         : '脚本已保存。可以直接阅读、复制口播，或修改后提交审核。');
       setRevision((value) => value + 1); page.reload();
-    } catch (reason) { setError(reason instanceof Error ? reason : new Error('脚本生成失败')); }
+    } catch (reason) {
+      setError(reason instanceof Error ? reason : new Error('脚本生成失败'));
+      setRetryAction('script');
+    }
     finally { locked.current = false; setPending(''); }
   }
 
   async function initializeMemory() {
     const targetAccountId = session?.accountId ?? selectedAccountId;
     if (!targetAccountId || locked.current) return;
-    locked.current = true; setPending('memory'); setError(null);
+    locked.current = true; beginPending('memory'); setError(null);
     try {
       await fetchData('/api/memories/initialize', memoryInitializationResultSchema, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ accountId: targetAccountId }),
@@ -234,10 +257,10 @@ export function ScriptWriterPage() {
   return <div className="mx-auto max-w-5xl space-y-7">
     <header className="flex flex-wrap items-start justify-between gap-4"><div><p className="eyebrow">脚本生成</p><h1 className="page-title">今天，拍点什么？</h1><p className="page-description">确认账号资料，让 AI 推荐完整视频方向；选中后微调拍摄参数，再生成脚本。</p></div><div className="flex flex-wrap items-center gap-2"><Badge variant="outline">{page.data.mode === 'mock' ? '演示生成' : '千问已配置'}</Badge><Badge variant="secondary">可用 {page.data.remainingPoints} 积分</Badge><Button variant="ghost" nativeButton={false} render={<Link href="/contents" />}><History />内容与脚本</Button><Button variant="ghost" nativeButton={false} render={<Link href={selectedAccountId ? `/ai/inspiration?${new URLSearchParams({ accountId: selectedAccountId })}` : '/ai/inspiration'} />}><Flame />完整灵感库</Button><Button variant="ghost" nativeButton={false} render={<Link href="/ai/planner" />}>批量策划</Button></div></header>
     <Stepper step={step} />
-    {error && <div role="alert" className="space-y-3 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800"><p>{error instanceof z.ZodError ? '返回结果格式异常，请重试。' : error.message}</p>{contentId && <p>选题已保存，重试只生成脚本，不会再次保存选题。已完成的选题策划费用保留，失败的脚本不扣积分。</p>}{error instanceof RequestError && error.code === 'ACTIVE_MEMORY_REQUIRED' && <Button variant="outline" disabled={Boolean(pending)} onClick={() => void initializeMemory()}>确认已有品牌资料并继续</Button>}{!contentId && <Button variant="outline" onClick={() => { setError(null); if (sessionParam && !session) window.location.assign('/scripts/new'); }}>继续选择</Button>}</div>}
+    {error && <div role="alert" className="space-y-3 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800"><p>{error instanceof z.ZodError ? '返回结果格式异常，请重试。' : error.message}</p>{contentId && <p>选题已保存，重试只生成脚本，不会再次保存选题。已完成的选题策划费用保留，失败的脚本不扣积分。</p>}{error instanceof RequestError && error.requestId && <p className="text-xs text-rose-600">请求编号：{error.requestId}</p>}<div className="flex flex-wrap gap-2">{error instanceof RequestError && error.code === 'ACTIVE_MEMORY_REQUIRED' && <Button variant="outline" disabled={Boolean(pending)} onClick={() => void initializeMemory()}>确认已有品牌资料并继续</Button>}{retryAction === 'topics' && <Button variant="outline" disabled={Boolean(pending)} onClick={() => void generateTopics()}><RefreshCw />重试生成方向</Button>}{retryAction === 'script' && <Button variant="outline" disabled={Boolean(pending)} onClick={() => void writeScript()}><RefreshCw />只重试生成脚本</Button>}<Button variant="ghost" onClick={() => { setError(null); setRetryAction(null); if (sessionParam && !session) window.location.assign('/scripts/new'); }}>关闭提示</Button></div></div>}
     {notice && <output className="block rounded-md border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">{notice}</output>}
     {session?.run.fallbackUsed && !contentId && <output className="block rounded-md border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">这批选题来自演示模式或历史降级模板，不是千问生成。若已配置 Key，请点击“换一批”重新生成真实 AI 选题。</output>}
-    {pending && <output aria-live="polite" className="flex items-center gap-3 rounded-md border border-[#c9e3ec] bg-[#e7f3f8] p-5"><LoaderCircle className="size-5 shrink-0 animate-spin text-[#0b6e99]" /><span><span className="block font-medium text-[#37352f]">{pending === 'topics' ? '正在为你想选题，并检查历史重复…' : pending === 'saving' ? '正在保存你选中的选题…' : pending === 'script' ? '正在写口播和分镜…' : pending === 'memory' ? '正在确认品牌资料…' : '正在换角度，并重新检查重复…'}</span><span className="mt-1 block text-sm text-[#5f5e5a]">这可能需要一点时间，请保持页面打开。</span></span></output>}
+    {pending && <output aria-live="polite" className="flex items-center gap-3 rounded-md border border-[#c9e3ec] bg-[#e7f3f8] p-5"><LoaderCircle className="size-5 shrink-0 animate-spin text-[#0b6e99]" /><span><span className="block font-medium text-[#37352f]">{pending === 'topics' ? '正在为你想选题，并检查历史重复…' : pending === 'saving' ? '正在保存你选中的选题…' : pending === 'script' ? '正在写口播和分镜…' : pending === 'memory' ? '正在确认品牌资料…' : '正在换角度，并重新检查重复…'}</span><span className="mt-1 block text-sm text-[#5f5e5a]">已等待 {pendingElapsed} 秒。{pendingElapsed < 15 ? '正在准备上下文并等待千问返回。' : '页面没有卡住；异常请求会自动结束，失败不会扣除本次 AI 积分。'}</span></span></output>}
     {!session && !contentId && <section className="surface-card space-y-6 sm:!p-7">
       {!writableAccounts.length ? <EmptyData title="还没有可生成脚本的账号" description="请先进入客户详情添加品牌、门店和账号；已有账号请联系负责人分配客户。"><Button nativeButton={false} render={<Link href="/clients" />}>前往客户管理</Button></EmptyData> : <>
         <label htmlFor="writer-account" className="block space-y-2 text-base font-medium">给哪个账号写？<NativeSelect id="writer-account" value={selectedAccountId} disabled={Boolean(pending)} className="h-11 w-full" onChange={(event) => { setAccountId(event.target.value); setDirectionBatch(0); }}>

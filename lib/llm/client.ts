@@ -8,7 +8,7 @@ export const bailianDefaults = {
     standard: 'qwen3.7-plus',
     strong: 'qwen3.8-max',
   },
-  timeoutMs: 30_000,
+  timeoutMs: 60_000,
 } as const;
 
 const modelSetting = (fallback: string) =>
@@ -253,11 +253,14 @@ export class OpenAICompatibleClient {
       } catch (error) {
         lastError = error;
         if (error instanceof LlmRequestError) throw error;
+        const timeout = error instanceof Error && ['AbortError', 'TimeoutError'].includes(error.name);
+        if (timeout) {
+          throw new LlmRequestError(failureMessage(error), attempt, { cause: error }, 'LLM_TIMEOUT', 504);
+        }
         if (attempt >= 2) {
-          const timeout = error instanceof Error && ['AbortError', 'TimeoutError'].includes(error.name);
           const invalid = error instanceof z.ZodError || error instanceof SyntaxError;
           throw new LlmRequestError(invalid ? 'AI 服务返回格式异常，请重试；本次不扣积分。' : failureMessage(error), attempt,
-            { cause: error }, invalid ? 'LLM_RESPONSE_INVALID' : timeout ? 'LLM_TIMEOUT' : 'LLM_CONNECTION_FAILED', timeout ? 504 : 502);
+            { cause: error }, invalid ? 'LLM_RESPONSE_INVALID' : 'LLM_CONNECTION_FAILED', 502);
         }
       } finally {
         clearTimeout(timer);

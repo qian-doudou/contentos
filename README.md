@@ -25,7 +25,7 @@ npm run dev
 - Standard：`qwen3.7-plus`
 - Strong：`qwen3.8-max`
 
-在 `.env.local` 中填写 `LLM_API_KEY` 即可进入 Live 模式；也兼容百炼官方环境变量名 `DASHSCOPE_API_KEY`，其中 `LLM_API_KEY` 优先。`LLM_TIMEOUT_MS` 默认为 30000，短暂网络错误或 429/5xx 最多自动重试 1 次。生产环境建议把 `LLM_BASE_URL` 替换为 `https://<WorkspaceId>.cn-beijing.maas.aliyuncs.com/compatible-mode/v1`。Base URL 与 API Key 必须属于同一地域，Key 不得写入源码或提交到 Git。
+在 `.env.local` 中填写 `LLM_API_KEY` 即可进入 Live 模式；也兼容百炼官方环境变量名 `DASHSCOPE_API_KEY`，其中 `LLM_API_KEY` 优先。`LLM_CONNECT_TIMEOUT_MS` 默认为 5000，用于快速识别无法连接的端点；`LLM_TIMEOUT_MS` 默认为 60000，为已连接的千问生成保留足够时间。短暂连接错误或 429/5xx 最多自动重试 1 次；整体生成超时不再重复发起，避免长时间等待和重复模型请求。生产环境建议把 `LLM_BASE_URL` 替换为 `https://<WorkspaceId>.cn-beijing.maas.aliyuncs.com/compatible-mode/v1`。Base URL 与 API Key 必须属于同一地域，Key 不得写入源码或提交到 Git。
 
 没有 Key 时，Skill Test Run 使用由 Output Schema 确定生成的 Mock JSON。前端和 Run Trace 只显示安全配置、模型名和用量，不返回 API Key、Base URL、完整环境变量或服务器绝对路径。
 
